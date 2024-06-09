@@ -25,12 +25,13 @@ npm install zero-backpressure-semaphore-typescript
 
 ## Key Features
 
-- ES6 Compatibility.
+- ES2020 Compatibility.
 - TypeScript support.
 - Backpressure control.
 - Graceful termination.
 - Self-explanatory method names and comprehensive documentation.
 - High efficiency: All state-altering operations have a constant time complexity, O(1).
+- No external runtime dependencies: Only development dependencies are used.
 
 ## 1st use-case: Single Job Execution
 
