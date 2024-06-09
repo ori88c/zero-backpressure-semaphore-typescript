@@ -4,7 +4,7 @@
   "description": "A classic semaphore with modern API, inspired by the RAII idiom, offering backpressure control for enhanced efficiency",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ori88c/zero-backpressure-semaphore-typescript.git"
+    "url": "git+https://github.com/ori88c/zero-backpressure-semaphore-typescript.git"
   },
   "contributors": [
     "Ori Cohen (https://github.com/ori88c/)"
