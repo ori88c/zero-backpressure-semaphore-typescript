@@ -116,7 +116,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 expect(actualThrownError).toBe(expectedThrownError);
             }
         });
-        test('waitTillAllExecutingJobsAreSettlled: should resolve once all executing jobs are settled', async () => {
+        test('waitTillAllExecutingJobsAreSettled: should resolve once all executing jobs are settled', async () => {
             const maxConcurrentJobs = 12;
             const jobCompletionCallbacks = [];
             const waitTillCompletionPromises = [];

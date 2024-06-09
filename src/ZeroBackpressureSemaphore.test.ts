@@ -142,7 +142,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         }
       });
 
-      test('waitTillAllExecutingJobsAreSettlled: should resolve once all executing jobs are settled', async () => {
+      test('waitTillAllExecutingJobsAreSettled: should resolve once all executing jobs are settled', async () => {
         const maxConcurrentJobs = 12;
         const jobCompletionCallbacks: PromiseResolveType[] = [];
         const waitTillCompletionPromises: Promise<void>[] = [];
