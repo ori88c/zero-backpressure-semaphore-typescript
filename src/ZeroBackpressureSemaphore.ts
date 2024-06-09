@@ -41,185 +41,185 @@ type PromiseResolveType = (value: void | PromiseLike<void>) => void;
  * - **maxConcurrentJobs, isAvailable, amountOfCurrentlyExecutingJobs**: O(1) for both time and space.
  */
 export class ZeroBackpressureSemaphore<T> {
-	private readonly _availableRoomsStack: Array<number>;
-	private readonly _rooms: Array<Promise<T> | null>;
+    private readonly _availableRoomsStack: Array<number>;
+    private readonly _rooms: Array<Promise<T> | null>;
 
-	// Room availability indicator:
-	// A pending promise denotes "all rooms are taken", whilst its resolve function is used to notify
-	// a state-change to all its awaiters. This approach reminds a condition_variable in C++.
-	private _availableRoomExists = Promise.resolve(); // Resolved if-and-only-if an available room exists.
-	private _notifyAvailability: PromiseResolveType | null = null; // Resolving the above, if in pending-state.
+    // Room availability indicator:
+    // A pending promise denotes "all rooms are taken", whilst its resolve function is used to notify
+    // a state-change to all its awaiters. This approach reminds a condition_variable in C++.
+    private _availableRoomExists = Promise.resolve(); // Resolved if-and-only-if an available room exists.
+    private _notifyAvailability: PromiseResolveType | null = null; // Resolving the above, if in pending-state.
 
-	constructor(maxConcurrentJobs: number) {
-		if (maxConcurrentJobs <= 0) {
-			throw new Error(
-				'ZeroBackpressureSemaphore expects a positive maxConcurrentJobs, received ' +
-				`${maxConcurrentJobs}`
-			);
-		}
+    constructor(maxConcurrentJobs: number) {
+        if (maxConcurrentJobs <= 0) {
+            throw new Error(
+                'ZeroBackpressureSemaphore expects a positive maxConcurrentJobs, received ' +
+                `${maxConcurrentJobs}`
+            );
+        }
 
-		if (maxConcurrentJobs !== Math.floor(maxConcurrentJobs)) {
-			throw new Error(
-				'ZeroBackpressureSemaphore expects a natural number for maxConcurrentJobs, received ' +
-				`${maxConcurrentJobs}`
-			);
-		}
+        if (maxConcurrentJobs !== Math.floor(maxConcurrentJobs)) {
+            throw new Error(
+                'ZeroBackpressureSemaphore expects a natural number for maxConcurrentJobs, received ' +
+                `${maxConcurrentJobs}`
+            );
+        }
 
-		this._availableRoomsStack = new Array<number>(maxConcurrentJobs).fill(0);
-		for (let i = 1; i < maxConcurrentJobs; ++i) {
-			this._availableRoomsStack[i] = i;
-		}
-		
-		this._rooms = new Array(maxConcurrentJobs).fill(null);
-	}
-	
+        this._availableRoomsStack = new Array<number>(maxConcurrentJobs).fill(0);
+        for (let i = 1; i < maxConcurrentJobs; ++i) {
+            this._availableRoomsStack[i] = i;
+        }
+        
+        this._rooms = new Array(maxConcurrentJobs).fill(null);
+    }
+    
 
     /**
      * maxConcurrentJobs
      * 
      * @returns The maximum number of concurrent jobs as specified in the constructor.
      */	
-	public get maxConcurrentJobs(): number {
-		return this._rooms.length;
-	}
-	
+    public get maxConcurrentJobs(): number {
+        return this._rooms.length;
+    }
+    
     /**
      * isAvailable
      * 
      * @returns True if there is an available job slot, otherwise false.
      */	
-	public get isAvailable(): boolean {
-		return this._availableRoomsStack.length > 0;
-	}
-	
+    public get isAvailable(): boolean {
+        return this._availableRoomsStack.length > 0;
+    }
+    
     /**
      * amountOfCurrentlyExecutingJobs
      * 
      * @returns The number of jobs currently being executed by the semaphore.
      */	
-	public get amountOfCurrentlyExecutingJobs(): number {
-		return this._rooms.length - this._availableRoomsStack.length;
-	}
+    public get amountOfCurrentlyExecutingJobs(): number {
+        return this._rooms.length - this._availableRoomsStack.length;
+    }
 
     /**
      * startExecution
      * 
      * This method resolves once the given job has started its execution, indicating that the
-	 * semaphore has become available (i.e., allotted a slot for the job).
-	 * Users can leverage this to determine the start timestamp of a job. If the semaphore is too busy
-	 * to start a given job `X`, there is no reason to create another job `Y` until `X` has started.
+     * semaphore has become available (i.e., allotted a slot for the job).
+     * Users can leverage this to determine the start timestamp of a job. If the semaphore is too busy
+     * to start a given job `X`, there is no reason to create another job `Y` until `X` has started.
      * 
      * This method is particularly useful for executing multiple or background jobs, where no return
-	 * value is expected.
+     * value is expected.
      * 
      * @param job - The job to be executed once the semaphore is available.
      * @returns A promise that resolves when the job starts execution.
      */	
-	public async startExecution(backgroundJob: SemaphoreJob<T>): Promise<void> {
-		const availableRoom = await this._getAvailableRoom();
-		this._rooms[availableRoom] = this._handleJobExecution(backgroundJob, availableRoom, true);
-		return;
-	}
+    public async startExecution(backgroundJob: SemaphoreJob<T>): Promise<void> {
+        const availableRoom = await this._getAvailableRoom();
+        this._rooms[availableRoom] = this._handleJobExecution(backgroundJob, availableRoom, true);
+        return;
+    }
 
     /**
      * waitForCompletion
      * 
      * This method executes the given job in a controlled manner, once the semaphore is available. 
      * It resolves or rejects when the job has finished its execution, providing the returned value
-	 * or thrown error from the job.
+     * or thrown error from the job.
      * 
      * This method is useful when the flow depends on the job's execution, such as needing its return
-	 * value or handling any errors it may throw.
+     * value or handling any errors it may throw.
      * 
      * ### Example Use Case
      * Suppose you have a route handler that needs to perform a specific code block with limited
-	 * concurrency (e.g., database access) due to external constraints, such as throttling limits.
-	 * This method allows you to execute the job with controlled concurrency. Once the job resolves
-	 * or rejects, you can continue the route handler's flow based on the result.
+     * concurrency (e.g., database access) due to external constraints, such as throttling limits.
+     * This method allows you to execute the job with controlled concurrency. Once the job resolves
+     * or rejects, you can continue the route handler's flow based on the result.
      * 
      * @param job - The job to be executed once the semaphore is available.
      * @returns A promise that resolves with the job's return value or rejects with its error.
      */
-	public async waitForCompletion(job: SemaphoreJob<T>): Promise<T> {
-		const availableRoom = await this._getAvailableRoom();
-		return this._rooms[availableRoom] = this._handleJobExecution(job, availableRoom, false);
-	}
+    public async waitForCompletion(job: SemaphoreJob<T>): Promise<T> {
+        const availableRoom = await this._getAvailableRoom();
+        return this._rooms[availableRoom] = this._handleJobExecution(job, availableRoom, false);
+    }
 
-	/**
- 	* waitTillAllExecutingJobsAreSettled
- 	* 
- 	* This method allows the caller to wait until all currently executing jobs have settled.
- 	* It is useful for ensuring that the application can terminate gracefully, without leaving 
- 	* any pending operations.
- 	* 
- 	* When this method is called, it returns a promise that resolves once all currently running 
- 	* promises have either resolved or rejected. This is particularly useful in scenarios where 
- 	* you need to ensure that all tasks are completed before proceeding, such as during shutdown 
- 	* processes or between unit tests.
- 	* 
- 	* @returns A promise that resolves when all currently executing jobs are settled.
- 	*/
-	public async waitTillAllExecutingJobsAreSettled(): Promise<void> {
-		const pendingJobs = this._rooms.filter(job => job !== null);
+    /**
+     * waitTillAllExecutingJobsAreSettled
+     * 
+     * This method allows the caller to wait until all currently executing jobs have settled.
+     * It is useful for ensuring that the application can terminate gracefully, without leaving 
+     * any pending operations.
+     * 
+     * When this method is called, it returns a promise that resolves once all currently running 
+     * promises have either resolved or rejected. This is particularly useful in scenarios where 
+     * you need to ensure that all tasks are completed before proceeding, such as during shutdown 
+     * processes or between unit tests.
+     * 
+     * @returns A promise that resolves when all currently executing jobs are settled.
+     */
+    public async waitTillAllExecutingJobsAreSettled(): Promise<void> {
+        const pendingJobs = this._rooms.filter(job => job !== null);
         if (pendingJobs.length > 0) {
             await Promise.allSettled(pendingJobs);
         }
-	}
-	
-	private async _getAvailableRoom(): Promise<number> {
-		while (!this.isAvailable) {
-			await this._availableRoomExists;
-		}
-		
-		const availableRoom = this._availableRoomsStack.pop();
-		
-		// Handle state change: from available to unavailable.
-		if (this._availableRoomsStack.length === 0) {
-			this._availableRoomExists = new Promise<void>(resolve => this._notifyAvailability = resolve);
-		}
+    }
+    
+    private async _getAvailableRoom(): Promise<number> {
+        while (!this.isAvailable) {
+            await this._availableRoomExists;
+        }
+        
+        const availableRoom = this._availableRoomsStack.pop();
+        
+        // Handle state change: from available to unavailable.
+        if (this._availableRoomsStack.length === 0) {
+            this._availableRoomExists = new Promise<void>(resolve => this._notifyAvailability = resolve);
+        }
 
-		return availableRoom;
-	}
+        return availableRoom;
+    }
 
-	/**
- 	* _handleJobExecution
- 	* 
- 	* This method manages the execution of a given job in a controlled manner. It ensures that
- 	* the job is executed within the constraints of the semaphore and handles updating the 
- 	* internal state once the job has completed.
- 	* 
- 	* ### Behavior
- 	* - Waits for the job to either return a value or throw an error.
- 	* - Updates the internal state to make the allotted room available again once the job is finished.
- 	* 
- 	* @param job - The job to be executed in the given room.
- 	* @returns A promise that resolves with the job's return value or rejects with its error.
-	*          Rejection occurs only if triggered by `waitForCompletion`.
- 	*/
-	public async _handleJobExecution(
-		job: SemaphoreJob<T>,
-		allottedRoom: number,
-		isBackgroundTask: boolean
-	): Promise<T> {
-		try {
-			const jobResult = await job();
-			return jobResult;
-		} catch (err) {
-			if (!isBackgroundTask) {
-				throw err;
-			}
+    /**
+     * _handleJobExecution
+     * 
+     * This method manages the execution of a given job in a controlled manner. It ensures that
+     * the job is executed within the constraints of the semaphore and handles updating the 
+     * internal state once the job has completed.
+     * 
+     * ### Behavior
+     * - Waits for the job to either return a value or throw an error.
+     * - Updates the internal state to make the allotted room available again once the job is finished.
+     * 
+     * @param job - The job to be executed in the given room.
+     * @returns A promise that resolves with the job's return value or rejects with its error.
+    *          Rejection occurs only if triggered by `waitForCompletion`.
+     */
+    public async _handleJobExecution(
+        job: SemaphoreJob<T>,
+        allottedRoom: number,
+        isBackgroundTask: boolean
+    ): Promise<T> {
+        try {
+            const jobResult = await job();
+            return jobResult;
+        } catch (err) {
+            if (!isBackgroundTask) {
+                throw err;
+            }
             // Semaphore does not log, as it's a low-level component. 
             // All logging preferenes are the caller's responsibility.
-		} finally {
-			this._rooms[allottedRoom] = null;
-			this._availableRoomsStack.push(allottedRoom);
-			
-			// Handle state change: from unavailable to available.
-			if (this._availableRoomsStack.length === 1) {
-				this._notifyAvailability();
-				this._availableRoomExists = Promise.resolve();
-				this._notifyAvailability = null;
-			}
-		}
-	}
+        } finally {
+            this._rooms[allottedRoom] = null;
+            this._availableRoomsStack.push(allottedRoom);
+            
+            // Handle state change: from unavailable to available.
+            if (this._availableRoomsStack.length === 1) {
+                this._notifyAvailability();
+                this._availableRoomExists = Promise.resolve();
+                this._notifyAvailability = null;
+            }
+        }
+    }
 }

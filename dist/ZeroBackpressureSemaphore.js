@@ -127,19 +127,19 @@ class ZeroBackpressureSemaphore {
         return this._rooms[availableRoom] = this._handleJobExecution(job, availableRoom, false);
     }
     /**
-    * waitTillAllExecutingJobsAreSettled
-    *
-    * This method allows the caller to wait until all currently executing jobs have settled.
-    * It is useful for ensuring that the application can terminate gracefully, without leaving
-    * any pending operations.
-    *
-    * When this method is called, it returns a promise that resolves once all currently running
-    * promises have either resolved or rejected. This is particularly useful in scenarios where
-    * you need to ensure that all tasks are completed before proceeding, such as during shutdown
-    * processes or between unit tests.
-    *
-    * @returns A promise that resolves when all currently executing jobs are settled.
-    */
+     * waitTillAllExecutingJobsAreSettled
+     *
+     * This method allows the caller to wait until all currently executing jobs have settled.
+     * It is useful for ensuring that the application can terminate gracefully, without leaving
+     * any pending operations.
+     *
+     * When this method is called, it returns a promise that resolves once all currently running
+     * promises have either resolved or rejected. This is particularly useful in scenarios where
+     * you need to ensure that all tasks are completed before proceeding, such as during shutdown
+     * processes or between unit tests.
+     *
+     * @returns A promise that resolves when all currently executing jobs are settled.
+     */
     async waitTillAllExecutingJobsAreSettled() {
         const pendingJobs = this._rooms.filter(job => job !== null);
         if (pendingJobs.length > 0) {
@@ -158,20 +158,20 @@ class ZeroBackpressureSemaphore {
         return availableRoom;
     }
     /**
-    * _handleJobExecution
-    *
-    * This method manages the execution of a given job in a controlled manner. It ensures that
-    * the job is executed within the constraints of the semaphore and handles updating the
-    * internal state once the job has completed.
-    *
-    * ### Behavior
-    * - Waits for the job to either return a value or throw an error.
-    * - Updates the internal state to make the allotted room available again once the job is finished.
-    *
-    * @param job - The job to be executed in the given room.
-    * @returns A promise that resolves with the job's return value or rejects with its error.
+     * _handleJobExecution
+     *
+     * This method manages the execution of a given job in a controlled manner. It ensures that
+     * the job is executed within the constraints of the semaphore and handles updating the
+     * internal state once the job has completed.
+     *
+     * ### Behavior
+     * - Waits for the job to either return a value or throw an error.
+     * - Updates the internal state to make the allotted room available again once the job is finished.
+     *
+     * @param job - The job to be executed in the given room.
+     * @returns A promise that resolves with the job's return value or rejects with its error.
     *          Rejection occurs only if triggered by `waitForCompletion`.
-    */
+     */
     async _handleJobExecution(job, allottedRoom, isBackgroundTask) {
         try {
             const jobResult = await job();
