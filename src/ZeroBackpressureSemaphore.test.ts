@@ -1,16 +1,23 @@
 import { ZeroBackpressureSemaphore, SemaphoreJob } from './ZeroBackpressureSemaphore';
 
-type PromiseResolveType = (value?: unknown) => void;
+type PromiseResolveCallbackType = (value?: unknown) => void;
 
-const resolveFast = async () => { expect(14).toBeGreaterThan(3); };
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+/**
+ * resolveFast
+ * 
+ * The one-and-only purpose of this function, is triggerring an event-loop iteration.
+ * It is relevant whenever a test needs to simulate tasks from the Node.js' micro-tasks queue.
+ */
+const resolveFast = async () => {
+  expect(14).toBeGreaterThan(3);
+};
 
 describe('ZeroBackpressureSemaphore tests', () => {
     describe('Happy path tests', () => {
       test('waitForCompletion: should process only one job at a time, when jobs happen to be scheduled sequentially (trivial case)', async () => {
         const maxConcurrentJobs = 7;
         const semaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentJobs);
-        let finishCurrentJob: PromiseResolveType;
+        let finishCurrentJob: PromiseResolveCallbackType;
         const numberOfJobs = 10;
         
         for (let jobNo = 1; jobNo <= numberOfJobs; ++jobNo) {
@@ -30,7 +37,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         const maxConcurrentJobs = 1;
         const lock = new ZeroBackpressureSemaphore<void>(maxConcurrentJobs);
         const numberOfJobs = 10;
-        const jobCompletionCallbacks: PromiseResolveType[] = [];
+        const jobCompletionCallbacks: PromiseResolveCallbackType[] = [];
         const waitTillCompletionPromises: Promise<void>[] = [];
 
         for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
@@ -73,7 +80,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
       test('waitForCompletion: should not exceed max concurrently executing jobs, when the amont of pending jobs is bigger than the amount of rooms', async () => {
         const maxConcurrentJobs = 5;
         const numberOfJobs = 17 * maxConcurrentJobs - 1;
-        const jobCompletionCallbacks: PromiseResolveType[] = [];
+        const jobCompletionCallbacks: PromiseResolveCallbackType[] = [];
         const waitTillCompletionPromises: Promise<void>[] = [];
 
         const semaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentJobs);
@@ -88,7 +95,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         }
 
         for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
-          // Just trigger the event loop, let the Semaphore to decide which jobs can
+          // Triggering the event loop, allowing the Semaphore to decide which jobs can
           // start their execution.
           await Promise.race([...waitTillCompletionPromises, resolveFast()]);
 
@@ -144,7 +151,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
 
       test('waitTillAllExecutingJobsAreSettled: should resolve once all executing jobs are settled', async () => {
         const maxConcurrentJobs = 12;
-        const jobCompletionCallbacks: PromiseResolveType[] = [];
+        const jobCompletionCallbacks: PromiseResolveCallbackType[] = [];
         const waitTillCompletionPromises: Promise<void>[] = [];
 
         const semaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentJobs);
@@ -158,7 +165,6 @@ describe('ZeroBackpressureSemaphore tests', () => {
           waitTillCompletionPromises.push(waitPromise);
         }
 
-        await resolveFast(); // Trigger the event loop.
         const waitTillAllAreSettledPromise = semaphore.waitTillAllExecutingJobsAreSettled();
         await resolveFast(); // Trigger the event loop.
 

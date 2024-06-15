@@ -103,7 +103,7 @@ async function refreshUsersCache(userIDs: ReadonlyArray<string>) {
   // their completion.
 
   // Graceful termination, if desired.
-  await dbAccessSemaphore.waitTillAllExecutingJobsAreSettlled();
+  await dbAccessSemaphore.waitTillAllExecutingJobsAreSettled();
   console.info(`Finished refreshing users cache for ${userIDs.length} users`);
 }
 ```

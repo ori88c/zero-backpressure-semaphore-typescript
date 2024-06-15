@@ -125,7 +125,7 @@ export declare class ZeroBackpressureSemaphore<T> {
      *
      * @param job - The job to be executed in the given room.
      * @returns A promise that resolves with the job's return value or rejects with its error.
-    *          Rejection occurs only if triggered by `waitForCompletion`.
+     *          Rejection occurs only if triggered by `waitForCompletion`.
      */
     _handleJobExecution(job: SemaphoreJob<T>, allottedRoom: number, isBackgroundTask: boolean): Promise<T>;
 }
