@@ -11,16 +11,16 @@ Each use case necessitates distinct handling capabilities, which will be discuss
 
 ## Modern API Design
 
-Traditional semaphore APIs require explicit acquire and release steps, adding overhead and responsibility on the user.
+Traditional semaphore APIs require explicit *acquire* and *release* steps, adding overhead and responsibility for the user. Additionally, they introduce the risk of deadlocking the application if one forgets to *release*, for example, due to a thrown exception.
 
-In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away these details and reducing user responsibility. The acquire and release steps are handled implicitly by the execution methods, similarly to the RAII idiom in C++.
+In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away these details and reducing user responsibility. The *acquire* and *release* steps are handled implicitly by the execution methods, similarly to the RAII idiom in C++.
 
 Method names are chosen to clearly convey their functionality.
 
 ## Installing
 
 ```bash
-npm install zero-backpressure-semaphore-typescript
+npm i zero-backpressure-semaphore-typescript
 ```
 
 ## Key Features
@@ -28,7 +28,7 @@ npm install zero-backpressure-semaphore-typescript
 - ES2020 Compatibility.
 - TypeScript support.
 - Backpressure control.
-- Graceful termination.
+- Graceful termination via method `waitTillAllExecutingJobsAreSettled`.
 - Self-explanatory method names and comprehensive documentation.
 - High efficiency: All state-altering operations have a constant time complexity, O(1).
 - No external runtime dependencies: Only development dependencies are used.
@@ -70,41 +70,42 @@ app.get('/user/', async (req, res) => {
 
 ## 2nd use-case: Multiple Jobs Execution
 
-Unlike the first use case, dispatching multiple concurrent jobs is more likely to cause backpressure. This pattern is typically observed in background job services, such as database migrations.
+Unlike the first use case, dispatching multiple concurrent jobs is more likely to cause backpressure. This pattern is typically observed in **background job services**, such as:
+- Log File analysis.
+- Network Traffic analyzers.
+- Vulnerability scanning.
+- Malware Signature updates.
+- Sensor Data aggregation.
+- Remote Configuration changes.
+- Batch Data processing.
 
 Here, the start time of each job is crucial. Since a pending job cannot start its execution until the semaphore allows, there is no benefit to adding additional jobs that cannot start immediately. The `startExecution` method communicates the job's start time to the caller (resolves as soon as the job starts), which enables to push a new job as-soon-as it makes sense.
 
-For example, consider an application with 100,000 customers where an in-memory or Redis cache needs to be refreshed every hour. Customer information is fetched from an external resource (e.g., a persistent database), for which we need to apply a concurrency limit. Either due to external constraints, or a deliberate effort to reduce server load.
-Instead of creating 100,000 jobs in advance (one for each customer), which might overwhelm the Node.js tasks queue and cause backpressure, the system should ideally create a customer-cache-refresh job just-in-time, only when the semaphore is available to accept it.
+For example, consider an application managing 100,000 IoT sensors that require hourly data aggregation. To mitigate server load, a semaphore can be employed to limit the number of concurrent data aggregation tasks.  
+Rather than pre-creating 100,000 jobs (one for each sensor), which could potentially overwhelm the Node.js task queue and induce backpressure, the system should adopt a just-in-time approach. This means creating a sensor aggregation job only when the semaphore indicates availability, thereby optimizing resource utilization and maintaining system stability.
 
 Note: method `waitTillAllExecutingJobsAreSettled` can be used to perform post-processing, after all jobs have completed. It complements the typical use-cases of `startExecution`.
 
 ```ts
 import { SemaphoreJob, ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-ts';
 
-type UserInfo = Record<string, string>;
+const maxConcurrentAggregationJobs = 24;
+const sensorAggregationSemaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentAggregationJobs);
 
-const maxConcurrentDbRequests = 10;
-const dbAccessSemaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentDbRequests);
-const usersCache = new Map<string, UserInfo>();
-
-async function refreshUsersCache(userIDs: ReadonlyArray<string>) {
-  for (const userID of userIDs) {
-    const refreshCurrentUser: SemaphoreJob<void> = async (): Promise<void> => {
-      const userInfo = await usersDbClient.get(userID);
-      usersCache.set(userID, userInfo);
-    }
-
-    // Till the semaphore can start refreshing our current user, it won't make
-    // sense to add more jobs, as such will create unnecessary backpressure.
-    await dbAccessSemaphore.startExecution(refreshCurrentUser);
+async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
+  for (const uid of sensorUIDs) {
+    // Until the semaphore can start aggregating data from the current sensor, it won't make
+    // sense to add more jobs, as such will induce unnecessary backpressure.
+    await sensorAggregationSemaphore.startExecution(
+      async (): Promise<void> => aggregateSensorData(uid)
+    );
   }
   // Note: at this stage, jobs might be still executing, as we did not wait for
   // their completion.
 
   // Graceful termination, if desired.
-  await dbAccessSemaphore.waitTillAllExecutingJobsAreSettled();
-  console.info(`Finished refreshing users cache for ${userIDs.length} users`);
+  await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
+  console.info(`Finished aggregating data from ${sensorUIDs.length} IoT sensors`);
 }
 ```
 
