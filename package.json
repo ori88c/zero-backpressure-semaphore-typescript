@@ -1,6 +1,6 @@
 {
   "name": "zero-backpressure-semaphore-typescript",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A classic semaphore with modern API, inspired by the RAII idiom, offering backpressure control for enhanced efficiency",
   "repository": {
     "type": "git",
@@ -21,11 +21,11 @@
     "semaphore",
     "mutex",
     "lock",
+    "async",
     "job",
     "concurrency",
     "backpressure",
     "limit",
-    "async",
     "typescript",
     "ts"
   ],
