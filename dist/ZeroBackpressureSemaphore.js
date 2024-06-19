@@ -169,16 +169,20 @@ class ZeroBackpressureSemaphore {
      * - Updates the internal state to make the allotted room available again once the job is finished.
      *
      * @param job - The job to be executed in the given room.
+     * @param allottedRoom - The room number in which the job should be executed.
+     * @param isBackgroundJob - A flag indicating whether the caller expects a return value to proceed
+     *                          with its work. If `true`, no return value is expected, and any error
+     *                          thrown by the job should not be propagated.
      * @returns A promise that resolves with the job's return value or rejects with its error.
      *          Rejection occurs only if triggered by `waitForCompletion`.
      */
-    async _handleJobExecution(job, allottedRoom, isBackgroundTask) {
+    async _handleJobExecution(job, allottedRoom, isBackgroundJob) {
         try {
             const jobResult = await job();
             return jobResult;
         }
         catch (err) {
-            if (!isBackgroundTask) {
+            if (!isBackgroundJob) {
                 throw err;
             }
             // Semaphore does not log, as it's a low-level component. 
