@@ -4,8 +4,8 @@ The `ZeroBackpressureSemaphore` class implements a semaphore for Node.js project
 This implementation does not queue pending jobs, thereby eliminating backpressure. As a result, users have better control over memory footprint, which enhances performance by reducing garbage-collector overhead.
 
 The design addresses the two primary semaphore use cases in Node.js:
-* __Single Job Execution__: In scenarios where multiple callers, such as route handlers, concurrently access the same semaphore instance. Each caller initiates a single job and relies on its outcome to proceed.
 * __Multiple Jobs Execution__: This use case involves a single caller dispatching multiple jobs, often serving as the sole owner of the semaphore instance.
+* __Single Job Execution__: In scenarios where multiple callers, such as route handlers, concurrently access the same semaphore instance. Each caller initiates a single job and relies on its outcome to proceed.
 
 Each use case necessitates distinct handling capabilities, which will be discussed separately with accompanying examples.
 
@@ -33,7 +33,48 @@ npm i zero-backpressure-semaphore-typescript
 - High efficiency: All state-altering operations have a constant time complexity, O(1).
 - No external runtime dependencies: Only development dependencies are used.
 
-## 1st use-case: Single Job Execution
+## 1st use-case: Multiple Jobs Execution
+
+This semaphore variant excels in eliminating backpressure when dispatching multiple concurrent jobs from the same caller. This pattern is typically observed in **background job services**, such as:
+- Log File analysis.
+- Network Traffic analyzers.
+- Vulnerability scanning.
+- Malware Signature updates.
+- Sensor Data aggregation.
+- Remote Configuration changes.
+- Batch Data processing.
+
+Here, the start time of each job is crucial. Since a pending job cannot start its execution until the semaphore allows, there is no benefit to adding additional jobs that cannot start immediately. The `startExecution` method communicates the job's start time to the caller (resolves as soon as the job starts), which enables to create a new job as-soon-as it makes sense.
+
+For example, consider an application managing 100,000 IoT sensors that require hourly data aggregation. To mitigate server load, a semaphore can be employed to limit the number of concurrent data aggregation tasks.  
+Rather than pre-creating 100,000 jobs (one for each sensor), which could potentially overwhelm the Node.js task queue and induce backpressure, the system should adopt a **just-in-time** approach. This means creating a sensor aggregation job only when the semaphore indicates availability, thereby optimizing resource utilization and maintaining system stability.
+
+Note: method `waitTillAllExecutingJobsAreSettled` can be used to perform post-processing, after all jobs have completed. It complements the typical use-cases of `startExecution`.
+
+```ts
+import { SemaphoreJob, ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-ts';
+
+const maxConcurrentAggregationJobs = 24;
+const sensorAggregationSemaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentAggregationJobs);
+
+async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
+  for (const uid of sensorUIDs) {
+    // Until the semaphore can start aggregating data from the current sensor, it won't make
+    // sense to add more jobs, as such will induce unnecessary backpressure.
+    await sensorAggregationSemaphore.startExecution(
+      async (): Promise<void> => aggregateSensorData(uid)
+    );
+  }
+  // Note: at this stage, jobs might be still executing, as we did not wait for
+  // their completion.
+
+  // Graceful termination, if desired.
+  await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
+  console.info(`Finished aggregating data from ${sensorUIDs.length} IoT sensors`);
+}
+```
+
+## 2nd use-case: Single Job Execution
 
 The `waitForCompletion` method is useful for executing a sub-procedure, for which the caller must wait before proceeding with its work.
 
@@ -66,47 +107,6 @@ app.get('/user/', async (req, res) => {
     res.status(HTTP_ERROR_CODE);
   }
 });
-```
-
-## 2nd use-case: Multiple Jobs Execution
-
-Unlike the first use case, dispatching multiple concurrent jobs is more likely to cause backpressure. This pattern is typically observed in **background job services**, such as:
-- Log File analysis.
-- Network Traffic analyzers.
-- Vulnerability scanning.
-- Malware Signature updates.
-- Sensor Data aggregation.
-- Remote Configuration changes.
-- Batch Data processing.
-
-Here, the start time of each job is crucial. Since a pending job cannot start its execution until the semaphore allows, there is no benefit to adding additional jobs that cannot start immediately. The `startExecution` method communicates the job's start time to the caller (resolves as soon as the job starts), which enables to push a new job as-soon-as it makes sense.
-
-For example, consider an application managing 100,000 IoT sensors that require hourly data aggregation. To mitigate server load, a semaphore can be employed to limit the number of concurrent data aggregation tasks.  
-Rather than pre-creating 100,000 jobs (one for each sensor), which could potentially overwhelm the Node.js task queue and induce backpressure, the system should adopt a just-in-time approach. This means creating a sensor aggregation job only when the semaphore indicates availability, thereby optimizing resource utilization and maintaining system stability.
-
-Note: method `waitTillAllExecutingJobsAreSettled` can be used to perform post-processing, after all jobs have completed. It complements the typical use-cases of `startExecution`.
-
-```ts
-import { SemaphoreJob, ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-ts';
-
-const maxConcurrentAggregationJobs = 24;
-const sensorAggregationSemaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentAggregationJobs);
-
-async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
-  for (const uid of sensorUIDs) {
-    // Until the semaphore can start aggregating data from the current sensor, it won't make
-    // sense to add more jobs, as such will induce unnecessary backpressure.
-    await sensorAggregationSemaphore.startExecution(
-      async (): Promise<void> => aggregateSensorData(uid)
-    );
-  }
-  // Note: at this stage, jobs might be still executing, as we did not wait for
-  // their completion.
-
-  // Graceful termination, if desired.
-  await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
-  console.info(`Finished aggregating data from ${sensorUIDs.length} IoT sensors`);
-}
 ```
 
 ## Graceful Termination
