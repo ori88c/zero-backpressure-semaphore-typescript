@@ -51,7 +51,7 @@ class ZeroBackpressureSemaphore {
                 `${maxConcurrentJobs}`);
         }
         if (maxConcurrentJobs !== Math.floor(maxConcurrentJobs)) {
-            throw new Error('ZeroBackpressureSemaphore expects a natural number for maxConcurrentJobs, received ' +
+            throw new Error('ZeroBackpressureSemaphore expects a natural number of maxConcurrentJobs, received ' +
                 `${maxConcurrentJobs}`);
         }
         this._availableRoomsStack = new Array(maxConcurrentJobs).fill(0);

@@ -24,6 +24,8 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 const jobPromise = new Promise(res => finishCurrentJob = res);
                 const job = () => jobPromise;
                 const waitTillCompletionPromise = semaphore.waitForCompletion(job);
+                await resolveFast();
+                expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(1);
                 finishCurrentJob();
                 await waitTillCompletionPromise;
             }

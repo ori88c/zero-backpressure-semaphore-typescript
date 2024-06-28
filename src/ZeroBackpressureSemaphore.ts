@@ -60,7 +60,7 @@ export class ZeroBackpressureSemaphore<T> {
 
         if (maxConcurrentJobs !== Math.floor(maxConcurrentJobs)) {
             throw new Error(
-                'ZeroBackpressureSemaphore expects a natural number for maxConcurrentJobs, received ' +
+                'ZeroBackpressureSemaphore expects a natural number of maxConcurrentJobs, received ' +
                 `${maxConcurrentJobs}`
             );
         }
@@ -72,7 +72,6 @@ export class ZeroBackpressureSemaphore<T> {
         
         this._rooms = new Array(maxConcurrentJobs).fill(null);
     }
-    
 
     /**
      * maxConcurrentJobs
