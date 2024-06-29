@@ -25,13 +25,15 @@ npm i zero-backpressure-semaphore-typescript
 
 ## Key Features
 
+- __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked.
+- __Graceful Termination__: Achieved via the `waitTillAllExecutingJobsAreSettled` method.
+- __High Efficiency__: All state-altering operations have a constant time complexity, O(1).
+- __Comprehensive documentation__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
+- Fully covered by unit tests.
+- Self-explanatory method names.
+- No external runtime dependencies: Only development dependencies are used.
 - ES2020 Compatibility.
 - TypeScript support.
-- Backpressure control.
-- Graceful termination via method `waitTillAllExecutingJobsAreSettled`.
-- Self-explanatory method names and comprehensive documentation.
-- High efficiency: All state-altering operations have a constant time complexity, O(1).
-- No external runtime dependencies: Only development dependencies are used.
 
 ## 1st use-case: Multiple Jobs Execution
 
