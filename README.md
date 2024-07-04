@@ -1,4 +1,4 @@
-# zero-backpressure-semaphore-typescript
+<h2 align="middle">zero-backpressure-semaphore-typescript</h2>
 
 The `ZeroBackpressureSemaphore` class implements a semaphore for Node.js projects, allowing users to limit the number of concurrently executing jobs.  
 This implementation does not queue pending jobs, thereby eliminating backpressure. As a result, users have better control over memory footprint, which enhances performance by reducing garbage-collector overhead.
@@ -48,13 +48,13 @@ This semaphore variant excels in eliminating backpressure when dispatching multi
 
 Here, the start time of each job is crucial. Since a pending job cannot start its execution until the semaphore allows, there is no benefit to adding additional jobs that cannot start immediately. The `startExecution` method communicates the job's start time to the caller (resolves as soon as the job starts), which enables to create a new job as-soon-as it makes sense.
 
-For example, consider an application managing 100,000 IoT sensors that require hourly data aggregation. To mitigate server load, a semaphore can be employed to limit the number of concurrent data aggregation tasks.  
-Rather than pre-creating 100,000 jobs (one for each sensor), which could potentially overwhelm the Node.js task queue and induce backpressure, the system should adopt a **just-in-time** approach. This means creating a sensor aggregation job only when the semaphore indicates availability, thereby optimizing resource utilization and maintaining system stability.
+For example, consider an application managing 1M IoT sensors that require hourly data aggregation. To mitigate server load, a semaphore can be employed to limit the number of concurrent data aggregation tasks.  
+Rather than pre-creating 1M jobs (one for each sensor), which could potentially overwhelm the Node.js task queue and induce backpressure, the system should adopt a **just-in-time** approach. This means creating a sensor aggregation job only when the semaphore indicates availability, thereby optimizing resource utilization and maintaining system stability.
 
 Note: method `waitTillAllExecutingJobsAreSettled` can be used to perform post-processing, after all jobs have completed. It complements the typical use-cases of `startExecution`.
 
 ```ts
-import { SemaphoreJob, ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-ts';
+import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
 
 const maxConcurrentAggregationJobs = 24;
 const sensorAggregationSemaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentAggregationJobs);
@@ -64,7 +64,7 @@ async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
     // Until the semaphore can start aggregating data from the current sensor, it won't make
     // sense to add more jobs, as such will induce unnecessary backpressure.
     await sensorAggregationSemaphore.startExecution(
-      async (): Promise<void> => aggregateSensorData(uid)
+      (): Promise<void> => handleDataAggregation(uid)
     );
   }
   // Note: at this stage, jobs might be still executing, as we did not wait for
@@ -73,6 +73,10 @@ async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
   // Graceful termination, if desired.
   await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
   console.info(`Finished aggregating data from ${sensorUIDs.length} IoT sensors`);
+}
+
+async function handleDataAggregation(sensorUID): Promise<void> {
+  // Business logic for aggregating data from a single sensor.
 }
 ```
 
@@ -85,7 +89,7 @@ For example, consider fetching data from an external resource within a route han
 The concurrency limit for such operations is typically set based on external constraints (e.g., reducing the chances of being throttled) or the desire to limit network resource usage.
 
 ```ts
-import { SemaphoreJob, ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-ts';
+import { SemaphoreJob, ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
 
 type UserInfo = Record<string, string>;
 

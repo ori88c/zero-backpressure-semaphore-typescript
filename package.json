@@ -1,7 +1,7 @@
 {
   "name": "zero-backpressure-semaphore-typescript",
-  "version": "1.0.5",
-  "description": "A classic semaphore with modern API, inspired by the RAII idiom, offering backpressure control for enhanced efficiency",
+  "version": "1.0.6",
+  "description": "A classic semaphore with modern API, inspired by the RAII idiom. It features backpressure control for enhanced efficiency, and includes a built-in method to gracefully await the completion of all currently executing jobs.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ori88c/zero-backpressure-semaphore-typescript.git"
@@ -23,10 +23,12 @@
     "lock",
     "async",
     "job",
+    "task",
     "concurrency",
     "backpressure",
     "limit",
-    "rate-limiter",
+    "schedule",
+    "executor",
     "nodejs",
     "typescript",
     "ts"
