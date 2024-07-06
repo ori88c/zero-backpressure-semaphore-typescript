@@ -79,6 +79,8 @@ async function handleDataAggregation(sensorUID): Promise<void> {
   // Business logic for aggregating data from a single sensor.
 }
 ```
+Please note that in a real-world scenario, sensor UIDs are more likely to be consumed from a message queue (e.g., RabbitMQ, Kafka, AWS SNS) rather than from an in-memory array. This setup **highlights the benefits** of avoiding backpressure:  
+We should avoid consuming a message if we cannot start processing it immediately. Working with message queues typically involves acknowledgements, which have timeout mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages.
 
 ## 2nd use-case: Single Job Execution
 
