@@ -1,4 +1,4 @@
-import { ZeroBackpressureSemaphore, SemaphoreJob } from './ZeroBackpressureSemaphore';
+import { ZeroBackpressureSemaphore, SemaphoreJob } from './zero-backpressure-semaphore';
 
 type PromiseResolveCallbackType = (value?: unknown) => void;
 
@@ -266,8 +266,6 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(() => new ZeroBackpressureSemaphore<void>(1.99)).toThrow();
         expect(() => new ZeroBackpressureSemaphore<void>(17.41)).toThrow();
       });
-
     });
-
   });
   

@@ -1,4 +1,15 @@
-export type SemaphoreJob<T> = () => Promise<T>;
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ZeroBackpressureSemaphore = void 0;
 /**
  * ZeroBackpressureSemaphore
  *
@@ -37,30 +48,46 @@ export type SemaphoreJob<T> = () => Promise<T>;
  * - **waitTillAllExecutingJobsAreSettled**: O(maxConcurrentJobs) for both time and space, excluding job executions.
  * - **maxConcurrentJobs, isAvailable, amountOfCurrentlyExecutingJobs**: O(1) for both time and space.
  */
-export declare class ZeroBackpressureSemaphore<T> {
-    private readonly _availableRoomsStack;
-    private readonly _rooms;
-    private _availableRoomExists;
-    private _notifyAvailability;
-    constructor(maxConcurrentJobs: number);
+class ZeroBackpressureSemaphore {
+    constructor(maxConcurrentJobs) {
+        if (maxConcurrentJobs <= 0) {
+            throw new Error('ZeroBackpressureSemaphore expects a positive maxConcurrentJobs, received ' +
+                `${maxConcurrentJobs}`);
+        }
+        if (maxConcurrentJobs !== Math.floor(maxConcurrentJobs)) {
+            throw new Error('ZeroBackpressureSemaphore expects a natural number of maxConcurrentJobs, received ' +
+                `${maxConcurrentJobs}`);
+        }
+        this._availableRoomsStack = new Array(maxConcurrentJobs).fill(0);
+        for (let i = 1; i < maxConcurrentJobs; ++i) {
+            this._availableRoomsStack[i] = i;
+        }
+        this._rooms = new Array(maxConcurrentJobs).fill(null);
+    }
     /**
      * maxConcurrentJobs
      *
      * @returns The maximum number of concurrent jobs as specified in the constructor.
      */
-    get maxConcurrentJobs(): number;
+    get maxConcurrentJobs() {
+        return this._rooms.length;
+    }
     /**
      * isAvailable
      *
      * @returns True if there is an available job slot, otherwise false.
      */
-    get isAvailable(): boolean;
+    get isAvailable() {
+        return this._availableRoomsStack.length > 0;
+    }
     /**
      * amountOfCurrentlyExecutingJobs
      *
      * @returns The number of jobs currently being executed by the semaphore.
      */
-    get amountOfCurrentlyExecutingJobs(): number;
+    get amountOfCurrentlyExecutingJobs() {
+        return this._rooms.length - this._availableRoomsStack.length;
+    }
     /**
      * startExecution
      *
@@ -75,7 +102,13 @@ export declare class ZeroBackpressureSemaphore<T> {
      * @param job - The job to be executed once the semaphore is available.
      * @returns A promise that resolves when the job starts execution.
      */
-    startExecution(backgroundJob: SemaphoreJob<T>): Promise<void>;
+    startExecution(backgroundJob) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const availableRoom = yield this._getAvailableRoom();
+            this._rooms[availableRoom] = this._handleJobExecution(backgroundJob, availableRoom, true);
+            return;
+        });
+    }
     /**
      * waitForCompletion
      *
@@ -95,7 +128,12 @@ export declare class ZeroBackpressureSemaphore<T> {
      * @param job - The job to be executed once the semaphore is available.
      * @returns A promise that resolves with the job's return value or rejects with its error.
      */
-    waitForCompletion(job: SemaphoreJob<T>): Promise<T>;
+    waitForCompletion(job) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const availableRoom = yield this._getAvailableRoom();
+            return this._rooms[availableRoom] = this._handleJobExecution(job, availableRoom, false);
+        });
+    }
     /**
      * waitTillAllExecutingJobsAreSettled
      *
@@ -110,8 +148,27 @@ export declare class ZeroBackpressureSemaphore<T> {
      *
      * @returns A promise that resolves when all currently executing jobs are settled.
      */
-    waitTillAllExecutingJobsAreSettled(): Promise<void>;
-    private _getAvailableRoom;
+    waitTillAllExecutingJobsAreSettled() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const pendingJobs = this._rooms.filter(job => job !== null);
+            if (pendingJobs.length > 0) {
+                yield Promise.allSettled(pendingJobs);
+            }
+        });
+    }
+    _getAvailableRoom() {
+        return __awaiter(this, void 0, void 0, function* () {
+            while (this._waitForAvailableRoom) {
+                yield this._waitForAvailableRoom;
+            }
+            const availableRoom = this._availableRoomsStack.pop();
+            // Handle state change: from available to unavailable.
+            if (this._availableRoomsStack.length === 0) {
+                this._waitForAvailableRoom = new Promise(resolve => this._notifyAvailableRoomExists = resolve);
+            }
+            return availableRoom;
+        });
+    }
     /**
      * _handleJobExecution
      *
@@ -131,5 +188,31 @@ export declare class ZeroBackpressureSemaphore<T> {
      * @returns A promise that resolves with the job's return value or rejects with its error.
      *          Rejection occurs only if triggered by `waitForCompletion`.
      */
-    _handleJobExecution(job: SemaphoreJob<T>, allottedRoom: number, isBackgroundJob: boolean): Promise<T>;
+    _handleJobExecution(job, allottedRoom, isBackgroundJob) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const jobResult = yield job();
+                return jobResult;
+            }
+            catch (err) {
+                if (!isBackgroundJob) {
+                    throw err;
+                }
+                // Semaphore does not log, as it's a low-level component. 
+                // All logging preferenes are the caller's responsibility.
+            }
+            finally {
+                this._rooms[allottedRoom] = null;
+                this._availableRoomsStack.push(allottedRoom);
+                // Handle state change: from unavailable to available.
+                if (this._availableRoomsStack.length === 1) {
+                    this._notifyAvailableRoomExists();
+                    this._waitForAvailableRoom = undefined;
+                    this._notifyAvailableRoomExists = undefined;
+                }
+            }
+        });
+    }
 }
+exports.ZeroBackpressureSemaphore = ZeroBackpressureSemaphore;
+//# sourceMappingURL=zero-backpressure-semaphore.js.map
