@@ -31,17 +31,26 @@ export type SemaphoreJob<T> = () => Promise<T>;
  * post-processing logic, and ensure a clear state between unit-tests.
  * If your component has a termination method (`stop`, `terminate`, or similar), keep that in mind.
  *
+ * ### Error Handling for Background Jobs
+ * Background jobs triggered by `startExecution` may throw errors. Unlike the `waitForCompletion` case,
+ * the caller has no reference to the corresponding job promise which executes in the background.
+ * Therefore, errors from background jobs are captured by the semaphore and can be extracted using
+ * the `extractUncaughtErrors` method. The number of accumulated uncaught errors can be obtained via
+ * the `amountOfUncaughtErrors` getter method. This can be useful, for example, if the user wants to
+ * handle uncaught errors only after a certain threshold is reached.
+ *
  * ### Time Complexity
  * - **Initialization**: O(maxConcurrentJobs) for both time and space.
  * - **startExecution, waitForCompletion**: O(1) for both time and space, excluding the job execution itself.
  * - **waitTillAllExecutingJobsAreSettled**: O(maxConcurrentJobs) for both time and space, excluding job executions.
  * - **maxConcurrentJobs, isAvailable, amountOfCurrentlyExecutingJobs**: O(1) for both time and space.
  */
-export declare class ZeroBackpressureSemaphore<T> {
+export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     private readonly _availableRoomsStack;
     private readonly _rooms;
     private _waitForAvailableRoom?;
     private _notifyAvailableRoomExists?;
+    private _uncaughtErrors;
     constructor(maxConcurrentJobs: number);
     /**
      * maxConcurrentJobs
@@ -61,6 +70,12 @@ export declare class ZeroBackpressureSemaphore<T> {
      * @returns The number of jobs currently being executed by the semaphore.
      */
     get amountOfCurrentlyExecutingJobs(): number;
+    /**
+     * amountOfUncaughtErrors
+     *
+     * @returns The number of uncaught errors from background jobs, triggered by `startExecution`.
+     */
+    get amountOfUncaughtErrors(): number;
     /**
      * startExecution
      *
@@ -111,6 +126,26 @@ export declare class ZeroBackpressureSemaphore<T> {
      * @returns A promise that resolves when all currently executing jobs are settled.
      */
     waitTillAllExecutingJobsAreSettled(): Promise<void>;
+    /**
+     * extractUncaughtErrors
+     *
+     * This method returns an array of uncaught errors, captured by the semaphore while executing
+     * background jobs added by `startExecution`. The term `extract` implies that the semaphore
+     * instance will no longer hold these error references once extracted, unlike `get`. In other
+     * words, ownership of these uncaught errors shifts to the caller, while the semaphore clears
+     * its list of uncaught errors.
+     *
+     * Even if the user does not intend to perform error-handling with these uncaught errors, it is
+     * important to periodically call this method when using `startExecution` to prevent the
+     * accumulation of errors in memory.
+     * However, there are a few exceptional cases where the user can safely avoid extracting
+     * uncaught errors:
+     * - The number of jobs is relatively small and the process is short-lived.
+     * - The jobs never throw errors, thus no uncaught errors are possible.
+     *
+     * @returns An array of uncaught errors from background jobs triggered by `startExecution`.
+     */
+    extractUncaughtErrors(): UncaughtErrorType[];
     private _getAvailableRoom;
     /**
      * _handleJobExecution

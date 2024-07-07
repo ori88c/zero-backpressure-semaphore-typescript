@@ -38,6 +38,8 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 finishCurrentJob();
                 yield waitTillCompletionPromise;
             }
+            expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
+            expect(semaphore.amountOfUncaughtErrors).toBe(0);
         }));
         test('waitForCompletion: should process only one job at a time, when max concurrency is 1 and jobs are scheduled concurrently', () => __awaiter(void 0, void 0, void 0, function* () {
             const maxConcurrentJobs = 1;
@@ -74,6 +76,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             expect(lock.isAvailable).toBeTruthy();
             expect(lock.amountOfCurrentlyExecutingJobs).toBe(0);
             expect(lock.maxConcurrentJobs).toBe(maxConcurrentJobs);
+            expect(lock.amountOfUncaughtErrors).toBe(0);
         }));
         test('waitForCompletion: should not exceed max concurrently executing jobs, when the amont of pending jobs is bigger than the amount of rooms', () => __awaiter(void 0, void 0, void 0, function* () {
             const maxConcurrentJobs = 5;
@@ -112,6 +115,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             expect(semaphore.isAvailable).toBeTruthy();
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
             expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
+            expect(semaphore.amountOfUncaughtErrors).toBe(0);
         }));
         test('waitForCompletion: should return the expected value when succeeds', () => __awaiter(void 0, void 0, void 0, function* () {
             const maxConcurrentJobs = 18;
@@ -120,6 +124,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             const job = () => Promise.resolve(expectedReturnValue);
             const actualReturnValue = yield semaphore.waitForCompletion(job);
             expect(actualReturnValue).toBe(expectedReturnValue);
+            expect(semaphore.amountOfUncaughtErrors).toBe(0);
         }));
         test('waitForCompletion: should return the expected error when throws', () => __awaiter(void 0, void 0, void 0, function* () {
             const maxConcurrentJobs = 3;
@@ -133,6 +138,9 @@ describe('ZeroBackpressureSemaphore tests', () => {
             catch (actualThrownError) {
                 expect(actualThrownError).toBe(expectedThrownError);
             }
+            // The semaphore stores uncaught errors only for background jobs triggered by
+            // `startExecution`.
+            expect(semaphore.amountOfUncaughtErrors).toBe(0);
         }));
         test('waitTillAllExecutingJobsAreSettled: should resolve once all executing jobs are settled', () => __awaiter(void 0, void 0, void 0, function* () {
             const maxConcurrentJobs = 12;
@@ -162,16 +170,21 @@ describe('ZeroBackpressureSemaphore tests', () => {
             }
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
             yield waitTillAllAreSettledPromise;
+            expect(semaphore.amountOfUncaughtErrors).toBe(0);
         }));
         test('startExecution: background jobs should not exceed the max given concurrency', () => __awaiter(void 0, void 0, void 0, function* () {
             const maxConcurrentJobs = 5;
             const numberOfJobs = 6 * maxConcurrentJobs - 1;
             const jobCompletionCallbacks = [];
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
-            // Each main iteration starts execution of the current jobNo, and completing
-            // the (jobNo - maxConcurrentJobs)th job if exist, to make an available room for it.
+            // Each main iteration starts execution of the current jobNo, and completing the
+            // (jobNo - maxConcurrentJobs)th job if exist, to make an available room for it.
+            let numberOfFailedJobs = 0;
             for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
                 const shouldJobSucceed = jobNo % 2 === 0; // Even attempts will succeed, odd attempts will throw.
+                if (!shouldJobSucceed) {
+                    ++numberOfFailedJobs;
+                }
                 const jobPromise = new Promise((res, rej) => jobCompletionCallbacks[jobNo] = shouldJobSucceed ?
                     () => res() :
                     () => rej(new Error("Why bad things happen to good semaphores?")));
@@ -187,7 +200,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 }
                 // At this stage, jobs [jobNo - maxConcurrentJobs, jobNo - 1] are executing, whilst jobNo
                 // cannot start yet (none of the currently executing ones has resulted yet).
-                expect(semaphore.isAvailable).toBeFalsy();
+                expect(semaphore.isAvailable).toBe(false);
                 expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs);
                 expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
                 // Finish oldest job (began executing first, among the currently executing ones).
@@ -213,6 +226,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             }
             expect(semaphore.isAvailable).toBe(true);
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
+            expect(semaphore.amountOfUncaughtErrors).toBe(numberOfFailedJobs);
         }));
     });
     describe('Negative path tests', () => {
@@ -225,6 +239,27 @@ describe('ZeroBackpressureSemaphore tests', () => {
             expect(() => new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(1.99)).toThrow();
             expect(() => new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(17.41)).toThrow();
         });
+        test('should capture uncaught errors from background jobs triggered by startExecution', () => __awaiter(void 0, void 0, void 0, function* () {
+            const maxConcurrentJobs = 17;
+            const numberOfJobs = maxConcurrentJobs + 18;
+            const jobErrors = [];
+            const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
+            for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
+                const error = {
+                    name: "CustomJobError",
+                    message: `Job no. ${jobNo} has failed`,
+                    jobID: jobNo
+                };
+                jobErrors.push(error);
+                yield semaphore.startExecution(() => __awaiter(void 0, void 0, void 0, function* () { throw error; }));
+            }
+            yield semaphore.waitTillAllExecutingJobsAreSettled();
+            expect(semaphore.amountOfUncaughtErrors).toBe(numberOfJobs);
+            expect(semaphore.extractUncaughtErrors()).toEqual(jobErrors);
+            // Following extraction, the semaphore no longer holds the error references.
+            expect(semaphore.amountOfUncaughtErrors).toBe(0);
+            expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
+        }));
     });
 });
 //# sourceMappingURL=zero-backpressure-semaphore.test.js.map

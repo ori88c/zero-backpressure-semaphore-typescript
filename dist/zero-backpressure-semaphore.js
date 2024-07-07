@@ -42,6 +42,14 @@ exports.ZeroBackpressureSemaphore = void 0;
  * post-processing logic, and ensure a clear state between unit-tests.
  * If your component has a termination method (`stop`, `terminate`, or similar), keep that in mind.
  *
+ * ### Error Handling for Background Jobs
+ * Background jobs triggered by `startExecution` may throw errors. Unlike the `waitForCompletion` case,
+ * the caller has no reference to the corresponding job promise which executes in the background.
+ * Therefore, errors from background jobs are captured by the semaphore and can be extracted using
+ * the `extractUncaughtErrors` method. The number of accumulated uncaught errors can be obtained via
+ * the `amountOfUncaughtErrors` getter method. This can be useful, for example, if the user wants to
+ * handle uncaught errors only after a certain threshold is reached.
+ *
  * ### Time Complexity
  * - **Initialization**: O(maxConcurrentJobs) for both time and space.
  * - **startExecution, waitForCompletion**: O(1) for both time and space, excluding the job execution itself.
@@ -50,6 +58,8 @@ exports.ZeroBackpressureSemaphore = void 0;
  */
 class ZeroBackpressureSemaphore {
     constructor(maxConcurrentJobs) {
+        // Stores uncaught errors from background jobs triggered by `startExecution`.
+        this._uncaughtErrors = [];
         if (maxConcurrentJobs <= 0) {
             throw new Error('ZeroBackpressureSemaphore expects a positive maxConcurrentJobs, received ' +
                 `${maxConcurrentJobs}`);
@@ -87,6 +97,14 @@ class ZeroBackpressureSemaphore {
      */
     get amountOfCurrentlyExecutingJobs() {
         return this._rooms.length - this._availableRoomsStack.length;
+    }
+    /**
+     * amountOfUncaughtErrors
+     *
+     * @returns The number of uncaught errors from background jobs, triggered by `startExecution`.
+     */
+    get amountOfUncaughtErrors() {
+        return this._uncaughtErrors.length;
     }
     /**
      * startExecution
@@ -156,6 +174,30 @@ class ZeroBackpressureSemaphore {
             }
         });
     }
+    /**
+     * extractUncaughtErrors
+     *
+     * This method returns an array of uncaught errors, captured by the semaphore while executing
+     * background jobs added by `startExecution`. The term `extract` implies that the semaphore
+     * instance will no longer hold these error references once extracted, unlike `get`. In other
+     * words, ownership of these uncaught errors shifts to the caller, while the semaphore clears
+     * its list of uncaught errors.
+     *
+     * Even if the user does not intend to perform error-handling with these uncaught errors, it is
+     * important to periodically call this method when using `startExecution` to prevent the
+     * accumulation of errors in memory.
+     * However, there are a few exceptional cases where the user can safely avoid extracting
+     * uncaught errors:
+     * - The number of jobs is relatively small and the process is short-lived.
+     * - The jobs never throw errors, thus no uncaught errors are possible.
+     *
+     * @returns An array of uncaught errors from background jobs triggered by `startExecution`.
+     */
+    extractUncaughtErrors() {
+        const errors = this._uncaughtErrors;
+        this._uncaughtErrors = [];
+        return errors;
+    }
     _getAvailableRoom() {
         return __awaiter(this, void 0, void 0, function* () {
             while (this._waitForAvailableRoom) {
@@ -196,10 +238,12 @@ class ZeroBackpressureSemaphore {
             }
             catch (err) {
                 if (!isBackgroundJob) {
+                    // Triggered by `waitForCompletion`:
+                    // Caller is awaiting either fulfillment or rejection.
                     throw err;
                 }
-                // Semaphore does not log, as it's a low-level component. 
-                // All logging preferenes are the caller's responsibility.
+                // Triggered by `startExecution`: A background job.
+                this._uncaughtErrors.push(err);
             }
             finally {
                 this._rooms[allottedRoom] = null;

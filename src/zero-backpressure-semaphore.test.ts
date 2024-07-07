@@ -2,6 +2,10 @@ import { ZeroBackpressureSemaphore, SemaphoreJob } from './zero-backpressure-sem
 
 type PromiseResolveCallbackType = (value?: unknown) => void;
 
+interface CustomJobError extends Error {
+  jobID: number;
+}
+
 /**
  * resolveFast
  * 
@@ -33,6 +37,9 @@ describe('ZeroBackpressureSemaphore tests', () => {
           finishCurrentJob();
           await waitTillCompletionPromise;
         }
+
+        expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
+        expect(semaphore.amountOfUncaughtErrors).toBe(0);
       });
 
       test('waitForCompletion: should process only one job at a time, when max concurrency is 1 and jobs are scheduled concurrently', async () => {
@@ -77,6 +84,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(lock.isAvailable).toBeTruthy();
         expect(lock.amountOfCurrentlyExecutingJobs).toBe(0);
         expect(lock.maxConcurrentJobs).toBe(maxConcurrentJobs);
+        expect(lock.amountOfUncaughtErrors).toBe(0);
       });
 
       test('waitForCompletion: should not exceed max concurrently executing jobs, when the amont of pending jobs is bigger than the amount of rooms', async () => {
@@ -124,6 +132,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(semaphore.isAvailable).toBeTruthy();
         expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
         expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
+        expect(semaphore.amountOfUncaughtErrors).toBe(0);
       });
 
       test('waitForCompletion: should return the expected value when succeeds', async () => {
@@ -135,6 +144,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         const actualReturnValue = await semaphore.waitForCompletion(job);
 
         expect(actualReturnValue).toBe(expectedReturnValue);
+        expect(semaphore.amountOfUncaughtErrors).toBe(0);
       });
 
       test('waitForCompletion: should return the expected error when throws', async () => {
@@ -149,6 +159,10 @@ describe('ZeroBackpressureSemaphore tests', () => {
         } catch (actualThrownError) {
           expect(actualThrownError).toBe(expectedThrownError);
         }
+
+        // The semaphore stores uncaught errors only for background jobs triggered by
+        // `startExecution`.
+        expect(semaphore.amountOfUncaughtErrors).toBe(0);
       });
 
       test('waitTillAllExecutingJobsAreSettled: should resolve once all executing jobs are settled', async () => {
@@ -188,6 +202,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
 
         expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
         await waitTillAllAreSettledPromise;
+        expect(semaphore.amountOfUncaughtErrors).toBe(0);
       });
 
       test('startExecution: background jobs should not exceed the max given concurrency', async () => {
@@ -196,11 +211,16 @@ describe('ZeroBackpressureSemaphore tests', () => {
         const jobCompletionCallbacks: (() => void)[] = [];
         const semaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentJobs);
 
-        // Each main iteration starts execution of the current jobNo, and completing
-        // the (jobNo - maxConcurrentJobs)th job if exist, to make an available room for it.
+        // Each main iteration starts execution of the current jobNo, and completing the
+        // (jobNo - maxConcurrentJobs)th job if exist, to make an available room for it.
+        let numberOfFailedJobs = 0;
         for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
           const shouldJobSucceed = jobNo % 2 === 0; // Even attempts will succeed, odd attempts will throw.
-          const jobPromise = new Promise<void>((res, rej) => 
+          if (!shouldJobSucceed) {
+            ++numberOfFailedJobs;
+          }
+          
+          const jobPromise = new Promise<void>((res, rej) =>
             jobCompletionCallbacks[jobNo] = shouldJobSucceed ? 
               () => res() :
               () => rej(new Error("Why bad things happen to good semaphores?"))
@@ -220,7 +240,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
 
           // At this stage, jobs [jobNo - maxConcurrentJobs, jobNo - 1] are executing, whilst jobNo
           // cannot start yet (none of the currently executing ones has resulted yet).
-          expect(semaphore.isAvailable).toBeFalsy();
+          expect(semaphore.isAvailable).toBe(false);
           expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs);
           expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
 
@@ -252,6 +272,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
 
         expect(semaphore.isAvailable).toBe(true);
         expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
+        expect(semaphore.amountOfUncaughtErrors).toBe(numberOfFailedJobs);
       });
     });
 
@@ -265,6 +286,32 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(() => new ZeroBackpressureSemaphore<void>(0.01)).toThrow();
         expect(() => new ZeroBackpressureSemaphore<void>(1.99)).toThrow();
         expect(() => new ZeroBackpressureSemaphore<void>(17.41)).toThrow();
+      });
+
+      test('should capture uncaught errors from background jobs triggered by startExecution', async () => {
+        const maxConcurrentJobs = 17;
+        const numberOfJobs = maxConcurrentJobs + 18;
+        const jobErrors: CustomJobError[] = [];
+        const semaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentJobs);
+
+        for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
+          const error: CustomJobError = {
+            name: "CustomJobError",
+            message: `Job no. ${jobNo} has failed`,
+            jobID: jobNo
+          };
+          jobErrors.push(error);
+
+          await semaphore.startExecution(async () => { throw error; });
+        }
+
+        await semaphore.waitTillAllExecutingJobsAreSettled();
+
+        expect(semaphore.amountOfUncaughtErrors).toBe(numberOfJobs);
+        expect(semaphore.extractUncaughtErrors()).toEqual(jobErrors);
+        // Following extraction, the semaphore no longer holds the error references.
+        expect(semaphore.amountOfUncaughtErrors).toBe(0);
+        expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
       });
     });
   });

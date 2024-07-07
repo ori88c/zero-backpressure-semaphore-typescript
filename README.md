@@ -26,13 +26,14 @@ npm i zero-backpressure-semaphore-typescript
 ## Key Features
 
 - __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked.
-- __Graceful Termination__: Achieved via the `waitTillAllExecutingJobsAreSettled` method.
+- __Graceful Termination__: Await the completion of all currently executing jobs via the `waitTillAllExecutingJobsAreSettled` method.
 - __High Efficiency__: All state-altering operations have a constant time complexity, O(1).
 - __Comprehensive documentation__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
+- __Robust Error Handling__: Uncaught errors from background jobs triggered by `startExecution` are captured and can be accessed using the `extractUncaughtErrors` method.
 - Fully covered by unit tests.
 - Self-explanatory method names.
 - No external runtime dependencies: Only development dependencies are used.
-- ES2020 Compatibility.
+- ES6 Compatibility.
 - TypeScript support.
 
 ## 1st use-case: Multiple Jobs Execution
@@ -70,15 +71,71 @@ async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
   // Note: at this stage, jobs might be still executing, as we did not wait for
   // their completion.
 
-  // Graceful termination, if desired.
+  // Graceful termination: await the completion of all currently executing jobs.
   await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
   console.info(`Finished aggregating data from ${sensorUIDs.length} IoT sensors`);
 }
 
+/**
+ * Handles the data aggregation process for a specified IoT sensor.
+ *
+ * @param sensorUID - The unique identifier of the IoT sensor whose data is to be aggregated.
+ */
 async function handleDataAggregation(sensorUID): Promise<void> {
-  // Business logic for aggregating data from a single sensor.
+  // Implementation goes here. 
 }
 ```
+
+If the jobs might throw errors, you don't need to worry about these errors propagating up to the event loop and potentially crashing the application. Uncaught errors from jobs triggered by `startExecution` are captured by the semaphore and can be safely accessed for post-processing purposes (e.g., metrics). See the following adaptation of the above example, now utilizing the semaphore's error handling capabilities:
+
+```ts
+import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
+
+const maxConcurrentAggregationJobs = 24;
+const sensorAggregationSemaphore = // Notice the 2nd generic parameter (Error by default).
+  new ZeroBackpressureSemaphore<void, SensorAggregationError>(
+    maxConcurrentAggregationJobs
+  );
+
+async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
+  for (const uid of sensorUIDs) {
+    // Until the semaphore can start aggregating data from the current sensor, it won't make
+    // sense to add more jobs, as such will induce unnecessary backpressure.
+    await sensorAggregationSemaphore.startExecution(
+      (): Promise<void> => handleDataAggregation(uid)
+    );
+  }
+  // Note: at this stage, jobs might be still executing, as we did not wait for
+  // their completion.
+
+  // Graceful termination: await the completion of all currently executing jobs.
+  await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
+
+  // Post processing.
+  const errors = sensorAggregationSemaphore.extractUncaughtErrors();
+  if (errors.length > 0) {
+    await updateFailedAggregationMetrics(errors);
+  }
+
+  // Summary.
+  const successfulJobsCount = sensorUIDs.length - errors.length;
+  logger.info(
+    `Successfully aggregated data from ${successfulJobsCount} IoT sensors, ` +
+    `with failures in aggregating data from ${errors.length} IoT sensors`
+  );
+}
+
+/**
+ * Handles the data aggregation process for a specified IoT sensor.
+ *
+ * @param sensorUID - The unique identifier of the IoT sensor whose data is to be aggregated.
+ * @throws SensorAggregationError - Throws an error if the data aggregation process fails.
+ */
+async function handleDataAggregation(sensorUID): Promise<void> {
+  // Implementation goes here. 
+}
+```
+
 Please note that in a real-world scenario, sensor UIDs are more likely to be consumed from a message queue (e.g., RabbitMQ, Kafka, AWS SNS) rather than from an in-memory array. This setup **highlights the benefits** of avoiding backpressure:  
 We should avoid consuming a message if we cannot start processing it immediately. Working with message queues typically involves acknowledgements, which have timeout mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages.
 
@@ -124,6 +181,23 @@ The `waitTillAllExecutingJobsAreSettled` method is essential for scenarios where
 A key use case for this method is ensuring stable unit tests. Each test should start with a clean state, independent of others, to avoid interference. This prevents scenarios where a job from Test A inadvertently continues to execute during Test B.
 
 If your component has a termination method (`stop`, `terminate`, or similar), keep that in mind.
+
+## Error Handling for Background Jobs
+
+Background jobs triggered by `startExecution` may throw errors. Unlike the `waitForCompletion` case, the caller has no reference to the corresponding job promise which executes in the background.
+
+Therefore, errors from background jobs are captured by the semaphore and can be extracted using the `extractUncaughtErrors` method. Optionally, you can specify a custom `UncaughtErrorType` as the second generic parameter of the `ZeroBackpressureSemaphore` class. By default, the error type is `Error`.
+```ts
+const trafficAnalyzerSemaphore = new ZeroBackpressureSemaphore<void, TrafficAnalyzerError>(
+  maxConcurrentAnalyzers
+);
+```
+The number of accumulated uncaught errors can be obtained via the `amountOfUncaughtErrors` getter method. This can be useful, for example, if the user wants to handle uncaught errors only after a certain threshold is reached.
+
+Even if the user does not intend to perform error-handling with these uncaught errors, it is **important** to periodically call this method when using `startExecution` to prevent the accumulation of errors in memory.
+However, there are a few exceptional cases where the user can safely avoid extracting uncaught errors:
+- The number of jobs is relatively small and the process is short-lived.
+- The jobs never throw errors, thus no uncaught errors are possible.
 
 ## Unavoidable / Implicit Backpressure
 
