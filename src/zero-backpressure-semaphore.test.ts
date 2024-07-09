@@ -274,6 +274,61 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
         expect(semaphore.amountOfUncaughtErrors).toBe(numberOfFailedJobs);
       });
+
+      test('when _waitForAvailableRoom resolves, its awaiters should be executed according to their order in the microtasks queue', async () => {
+        // This test does not directly assess the semaphore component. Instead, it verifies the
+        // correctness of the room-acquire mechanism, ensuring it honors the FIFO order of callers
+        // requesting an available room.
+        // In JavaScript, it is common for a caller to create a promise (as the sole owner of
+        // this promise instance) and await its resolution. It is less common for multiple promises
+        // to await concurrently on the same shared promise instance. In that scenario, a pertinent
+        // question arises:
+        // In which *order* will the multiple awaiters be executed?
+        // Short answer: according to their order in the Node.js microtasks queue.
+        // Long answer:
+        // When a promise is resolved, the callbacks attached to it (other promises awaiting
+        // its resolution) are *queued* as microtasks. Therefore, if multiple awaiters are waiting on
+        // the same shared promise instance, and the awaiters were created in a *specific* order, the
+        // first awaiter will be executed first once the shared promise is resolved. This is because
+        // adding a microtask (such as an async function awaiting a promise) ensures its position in
+        // the microtasks queue, guaranteeing its execution before subsequent microtasks in the queue.
+        // This holds true for any position, i.e., it can be generalized.
+
+        // In the following test, a relatively large number of awaiters is chosen. The motive is
+        // to observe statistical errors, which should *not* exist regardless of the input size.
+        const numberOfAwaiters = 384;
+        const actualExecutionOrderOfAwaiters: number[] = [];
+        
+        // This specific usage of one promise instance being awaited by multiple other promises
+        // may remind those with a C++ background of a condition_variable.
+        let notifyAvailableRoomExists: PromiseResolveCallbackType;
+        const waitForAvailableRoom = new Promise(res => notifyAvailableRoomExists = res);
+
+        const awaiterAskingForRoom = async (awaiterID: number): Promise<void> => {
+          await waitForAvailableRoom;
+          actualExecutionOrderOfAwaiters.push(awaiterID);
+          // Other awaiters in the microtasks queue will now be notified about the
+          // fulfillment of 'waitForAvailableRoom'.
+        }
+
+        const expectedExecutionOrder: number[] = [];
+        const awaiterPromises: Promise<void>[] = [];
+        for (let i = 0; i < numberOfAwaiters; ++i) {
+          expectedExecutionOrder.push(i);
+          awaiterPromises.push(awaiterAskingForRoom(i));
+        }
+
+        // Initially, no awaiter should be able to make progress.
+        await Promise.race([...awaiterPromises, resolveFast()]);
+        expect(actualExecutionOrderOfAwaiters.length).toBe(0);
+
+        // Notify that a room is available, triggering the awaiters in order.
+        notifyAvailableRoomExists();
+        await Promise.all(awaiterPromises);
+
+        // The execution order should match the expected order.
+        expect(actualExecutionOrderOfAwaiters).toEqual(expectedExecutionOrder);;
+      });
     });
 
     describe('Negative path tests', () => {
