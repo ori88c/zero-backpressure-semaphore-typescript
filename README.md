@@ -13,7 +13,7 @@ Each use case necessitates distinct handling capabilities, which will be discuss
 
 Traditional semaphore APIs require explicit *acquire* and *release* steps, adding overhead and responsibility for the user. Additionally, they introduce the risk of deadlocking the application if one forgets to *release*, for example, due to a thrown exception.
 
-In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away these details and reducing user responsibility. The *acquire* and *release* steps are handled implicitly by the execution methods, similarly to the RAII idiom in C++.
+In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away these details and reducing user responsibility. The *acquire* and *release* steps are handled implicitly by the execution methods, reminiscent of the RAII idiom in C++.
 
 Method names are chosen to clearly convey their functionality.
 
@@ -25,7 +25,7 @@ npm i zero-backpressure-semaphore-typescript
 
 ## Key Features
 
-- __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked.
+- __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked. Without backpressure control, the heap can become overloaded, resulting in space complexity of O(*semaphore-rooms* + *pending-jobs*) instead of O(*semaphore-rooms*).
 - __Graceful Termination__: Await the completion of all currently executing jobs via the `waitTillAllExecutingJobsAreSettled` method.
 - __High Efficiency__: All state-altering operations have a constant time complexity, O(1).
 - __Comprehensive documentation__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
@@ -90,7 +90,8 @@ async function handleDataAggregation(sensorUID): Promise<void> {
 }
 ```
 
-If the jobs might throw errors, you don't need to worry about these errors propagating up to the event loop and potentially crashing the application. Uncaught errors from jobs triggered by `startExecution` are captured by the semaphore and can be safely accessed for post-processing purposes (e.g., metrics). See the following adaptation of the above example, now utilizing the semaphore's error handling capabilities:
+If the jobs might throw errors, you don't need to worry about these errors propagating up to the event loop and potentially crashing the application. Uncaught errors from jobs triggered by `startExecution` are captured by the semaphore and can be safely accessed for post-processing purposes (e.g., metrics).  
+Refer to the following adaptation of the above example, now utilizing the semaphore's error handling capabilities:
 
 ```ts
 import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
@@ -145,7 +146,59 @@ async function handleDataAggregation(sensorUID): Promise<void> {
 ```
 
 Please note that in a real-world scenario, sensor UIDs are more likely to be consumed from a message queue (e.g., RabbitMQ, Kafka, AWS SNS) rather than from an in-memory array. This setup **highlights the benefits** of avoiding backpressure:  
-We should avoid consuming a message if we cannot start processing it immediately. Working with message queues typically involves acknowledgements, which have timeout mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages.
+We should avoid consuming a message if we cannot start processing it immediately. Working with message queues typically involves acknowledgements, which have timeout mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages.  
+Refer to the following adaptation of the previous example, where sensor UIDs are consumed from a message queue. This example overlooks error handling and message validation, for simplicity.
+
+```ts
+import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
+
+const maxConcurrentAggregationJobs = 24;
+const sensorAggregationSemaphore =
+  new ZeroBackpressureSemaphore<void, SensorAggregationError>(
+    maxConcurrentAggregationJobs
+  );
+
+const SENSOR_UIDS_TOPIC = "IOT_SENSOR_UIDS";
+const mqClient = new MessageQueueClient(SENSOR_UIDS_TOPIC);
+
+async function processConsumedMessages(): Promise<void> {
+  let numberOfProcessedMessages = 0;
+
+  do {
+    const message = await mqClient.receiveOneMessage();
+    if (!message) {
+      // Consider the queue as empty.
+      break;
+    }
+
+    ++numberOfProcessedMessages;
+    const { uid } = message.data;
+    await sensorAggregationSemaphore.startExecution(
+      (): Promise<void> => handleDataAggregation(uid);
+    );
+    
+    await mqClient.removeMessageFromQueue(message);
+  } while (true);
+  // Note: at this stage, jobs might be still executing, as we did not wait for
+  // their completion.
+
+  // Graceful termination: await the completion of all currently executing jobs.
+  await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
+
+  // Post processing.
+  const errors = sensorAggregationSemaphore.extractUncaughtErrors();
+  if (errors.length > 0) {
+    await updateFailedAggregationMetrics(errors);
+  }
+
+  // Summary.
+  const successfulJobsCount = numberOfProcessedMessages - errors.length;
+  logger.info(
+    `Successfully aggregated data from ${successfulJobsCount} IoT sensors, ` +
+    `with failures in aggregating data from ${errors.length} IoT sensors`
+  );
+}
+```
 
 ## 2nd use-case: Single Job Execution
 
