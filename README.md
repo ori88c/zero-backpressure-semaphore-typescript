@@ -58,12 +58,15 @@ Note: method `waitTillAllExecutingJobsAreSettled` can be used to perform post-pr
 import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
 
 const maxConcurrentAggregationJobs = 24;
-const sensorAggregationSemaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentAggregationJobs);
+const sensorAggregationSemaphore = new ZeroBackpressureSemaphore<void>(
+  maxConcurrentAggregationJobs
+);
 
 async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
   for (const uid of sensorUIDs) {
-    // Until the semaphore can start aggregating data from the current sensor, it won't make
-    // sense to add more jobs, as such will induce unnecessary backpressure.
+    // Until the semaphore can start aggregating data from the current sensor,
+    // it won't make sense to add more jobs, as such will induce unnecessary
+    // backpressure.
     await sensorAggregationSemaphore.startExecution(
       (): Promise<void> => handleDataAggregation(uid)
     );
@@ -79,7 +82,8 @@ async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
 /**
  * Handles the data aggregation process for a specified IoT sensor.
  *
- * @param sensorUID - The unique identifier of the IoT sensor whose data is to be aggregated.
+ * @param sensorUID - The unique identifier of the IoT sensor whose data is to
+ *                    be aggregated.
  */
 async function handleDataAggregation(sensorUID): Promise<void> {
   // Implementation goes here. 
@@ -92,15 +96,17 @@ If the jobs might throw errors, you don't need to worry about these errors propa
 import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
 
 const maxConcurrentAggregationJobs = 24;
-const sensorAggregationSemaphore = // Notice the 2nd generic parameter (Error by default).
+const sensorAggregationSemaphore =
+  // Notice the 2nd generic parameter (Error by default).
   new ZeroBackpressureSemaphore<void, SensorAggregationError>(
     maxConcurrentAggregationJobs
   );
 
 async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
   for (const uid of sensorUIDs) {
-    // Until the semaphore can start aggregating data from the current sensor, it won't make
-    // sense to add more jobs, as such will induce unnecessary backpressure.
+    // Until the semaphore can start aggregating data from the current sensor,
+    // it won't make sense to add more jobs, as such will induce unnecessary
+    // backpressure.
     await sensorAggregationSemaphore.startExecution(
       (): Promise<void> => handleDataAggregation(uid)
     );
@@ -128,8 +134,10 @@ async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
 /**
  * Handles the data aggregation process for a specified IoT sensor.
  *
- * @param sensorUID - The unique identifier of the IoT sensor whose data is to be aggregated.
- * @throws SensorAggregationError - Throws an error if the data aggregation process fails.
+ * @param sensorUID - The unique identifier of the IoT sensor whose data is to
+ *                    be aggregated.
+ * @throws SensorAggregationError - Throws an error if the data aggregation
+ *                                  process fails.
  */
 async function handleDataAggregation(sensorUID): Promise<void> {
   // Implementation goes here. 
