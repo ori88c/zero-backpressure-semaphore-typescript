@@ -275,6 +275,56 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(semaphore.amountOfUncaughtErrors).toBe(numberOfFailedJobs);
       });
 
+      test('waitForAvailability: should resolve once at least one room is available', async () => {
+        const maxConcurrentJobs = 11;
+        const jobCompletionCallbacks: PromiseResolveCallbackType[] = [];
+
+        const semaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentJobs);
+
+        for (let jobNo = 0; jobNo < maxConcurrentJobs; ++jobNo) {
+          expect(semaphore.isAvailable).toBe(true);
+          const jobPromise = new Promise<void>(res => jobCompletionCallbacks[jobNo] = res);
+          await semaphore.startExecution(() => jobPromise); // Should resolve immediately.
+        }
+
+        expect(semaphore.isAvailable).toBe(false);
+        
+        let finishedWaitingForAvailability = false;
+        const waitForAvailabilityPromise = (async (): Promise<void> => {
+          await semaphore.waitForAvailability();
+          finishedWaitingForAvailability = true;
+        })();
+
+        // Perform some event loop iterations, without resolving any ongoing semaphore job.
+        // We expect waitForAvailabilityPromise to not be resolved.
+        const numberOfEventLoopIterationsWithoutExpectedChange = 197;
+        for (let eventLoopIteration = 0; eventLoopIteration < numberOfEventLoopIterationsWithoutExpectedChange; ++eventLoopIteration) {
+          await Promise.race([waitForAvailabilityPromise, resolveFast()]);
+          expect(semaphore.isAvailable).toBe(false);
+          expect(finishedWaitingForAvailability).toBe(false);
+        }
+
+        // Resolve one random job.
+        const randomJobIndexToResolveFirst = Math.floor(Math.random() * maxConcurrentJobs);
+        jobCompletionCallbacks[randomJobIndexToResolveFirst]();
+        const deleteCount = 1;
+        jobCompletionCallbacks.splice(randomJobIndexToResolveFirst, deleteCount);
+
+        // Now, we expect the semaphore to become available.
+        await waitForAvailabilityPromise;
+        expect(semaphore.isAvailable).toBe(true);
+        expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs - 1);
+        expect(finishedWaitingForAvailability).toBe(true);
+
+        // Clean pending promises.
+        for (const jobCompletionCallback of jobCompletionCallbacks) {
+          jobCompletionCallback();
+        }
+
+        await semaphore.waitTillAllExecutingJobsAreSettled();
+        expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
+      });
+
       test('when _waitForAvailableRoom resolves, its awaiters should be executed according to their order in the microtasks queue', async () => {
         // This test does not directly assess the semaphore component. Instead, it verifies the
         // correctness of the room-acquire mechanism, ensuring it honors the FIFO order of callers

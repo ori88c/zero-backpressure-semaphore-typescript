@@ -175,6 +175,32 @@ class ZeroBackpressureSemaphore {
         });
     }
     /**
+     * waitForAvailability
+     *
+     * This method resolves once at least one room (slot) is available for job execution.
+     * In other words, it resolves when the semaphore is available to trigger a new job immediately.
+     *
+     * ### Example Use Case
+     * Consider a scenario where we read messages from a message queue (e.g., RabbitMQ, Kafka).
+     * Each message contains job-specific metadata, meaning for each message, we want to create a
+     * corresponding semaphore job. We aim to start processing a message immediately once it is
+     * consumed, as message queues typically involve *acknowledgements*, which have *timeout*
+     * mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable
+     * handling of messages. Backpressure on the semaphore may cause messages to wait too long
+     * before their corresponding job starts, increasing the chances of their timeout being exceeded.
+     * To prevent such potential backpressure, users can utilize the `waitForAvailability` method
+     * before consuming the next message.
+     *
+     * @returns A promise that resolves once at least one room is available.
+     */
+    waitForAvailability() {
+        return __awaiter(this, void 0, void 0, function* () {
+            while (this._waitForAvailableRoom) {
+                yield this._waitForAvailableRoom;
+            }
+        });
+    }
+    /**
      * extractUncaughtErrors
      *
      * This method returns an array of uncaught errors, captured by the semaphore while executing

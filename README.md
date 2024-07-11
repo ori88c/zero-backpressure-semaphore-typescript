@@ -145,8 +145,8 @@ async function handleDataAggregation(sensorUID): Promise<void> {
 }
 ```
 
-Please note that in a real-world scenario, sensor UIDs are more likely to be consumed from a message queue (e.g., RabbitMQ, Kafka, AWS SNS) rather than from an in-memory array. This setup **highlights the benefits** of avoiding backpressure:  
-We should avoid consuming a message if we cannot start processing it immediately. Working with message queues typically involves acknowledgements, which have timeout mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages.  
+Please note that in a real-world scenario, sensor UIDs may be consumed from a message queue (e.g., RabbitMQ, Kafka, AWS SNS) rather than from an in-memory array. This setup **highlights the benefits** of avoiding backpressure:  
+We should avoid consuming a message if we cannot start processing it immediately. Working with message queues typically involves acknowledgements, which have **timeout** mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages. The `waitForAvailability` method addresses this need by checking availability as a preliminary action before consuming a message.  
 Refer to the following adaptation of the previous example, where sensor UIDs are consumed from a message queue. This example overlooks error handling and message validation, for simplicity.
 
 ```ts
@@ -165,6 +165,7 @@ async function processConsumedMessages(): Promise<void> {
   let numberOfProcessedMessages = 0;
 
   do {
+    await sensorAggregationSemaphore.waitForAvailability();
     const message = await mqClient.receiveOneMessage();
     if (!message) {
       // Consider the queue as empty.
@@ -173,6 +174,9 @@ async function processConsumedMessages(): Promise<void> {
 
     ++numberOfProcessedMessages;
     const { uid } = message.data;
+
+    // At this point, `startExecution` will begin immediately, due to the
+    // preliminary `waitForAvailability` action.
     await sensorAggregationSemaphore.startExecution(
       (): Promise<void> => handleDataAggregation(uid);
     );
@@ -199,6 +203,9 @@ async function processConsumedMessages(): Promise<void> {
   );
 }
 ```
+
+In reference to the above example, please note that `waitForAvailability` may be considered overkill or redundant if the job's duration is significantly shorter than the message timeout.  
+For example, if the message queue's timeout for acknowledging a message is 1 minute and a typical job duration is 1 second, the 59 second gap provides a substantial safety margin. In such cases, the preliminary `waitForAvailability` action can be omitted.
 
 ## 2nd use-case: Single Job Execution
 
