@@ -26,7 +26,7 @@ npm i zero-backpressure-semaphore-typescript
 ## Key Features
 
 - __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked. Without backpressure control, the heap can become overloaded, resulting in space complexity of O(*semaphore-rooms* + *pending-jobs*) instead of O(*semaphore-rooms*).
-- __Graceful Termination__: Await the completion of all currently executing jobs via the `waitTillAllExecutingJobsAreSettled` method.
+- __Graceful Termination__: Await the completion of all currently executing jobs via the `waitForAllExecutingJobsToComplete` method.
 - __High Efficiency__: All state-altering operations have a constant time complexity, O(1).
 - __Comprehensive documentation__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
 - __Robust Error Handling__: Uncaught errors from background jobs triggered by `startExecution` are captured and can be accessed using the `extractUncaughtErrors` method.
@@ -35,6 +35,10 @@ npm i zero-backpressure-semaphore-typescript
 - No external runtime dependencies: Only development dependencies are used.
 - ES6 Compatibility.
 - TypeScript support.
+
+## Breaking Change in Version 2.0.0
+
+The only breaking change in this release is the renaming of the method `waitTillAllExecutingJobsAreSettled` to `waitForAllExecutingJobsToComplete` for improved readability. No other changes have been introduced.
 
 ## 1st use-case: Multiple Jobs Execution
 
@@ -52,7 +56,7 @@ Here, the start time of each job is crucial. Since a pending job cannot start it
 For example, consider an application managing 1M IoT sensors that require hourly data aggregation. To mitigate server load, a semaphore can be employed to limit the number of concurrent data aggregation tasks.  
 Rather than pre-creating 1M jobs (one for each sensor), which could potentially overwhelm the Node.js task queue and induce backpressure, the system should adopt a **just-in-time** approach. This means creating a sensor aggregation job only when the semaphore indicates availability, thereby optimizing resource utilization and maintaining system stability.
 
-Note: method `waitTillAllExecutingJobsAreSettled` can be used to perform post-processing, after all jobs have completed. It complements the typical use-cases of `startExecution`.
+Note: method `waitForAllExecutingJobsToComplete` can be used to perform post-processing, after all jobs have completed. It complements the typical use-cases of `startExecution`.
 
 ```ts
 import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
@@ -75,7 +79,7 @@ async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
   // their completion.
 
   // Graceful termination: await the completion of all currently executing jobs.
-  await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
+  await sensorAggregationSemaphore.waitForAllExecutingJobsToComplete();
   console.info(`Finished aggregating data from ${sensorUIDs.length} IoT sensors`);
 }
 
@@ -116,7 +120,7 @@ async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
   // their completion.
 
   // Graceful termination: await the completion of all currently executing jobs.
-  await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
+  await sensorAggregationSemaphore.waitForAllExecutingJobsToComplete();
 
   // Post processing.
   const errors = sensorAggregationSemaphore.extractUncaughtErrors();
@@ -146,7 +150,7 @@ async function handleDataAggregation(sensorUID): Promise<void> {
 ```
 
 Please note that in a real-world scenario, sensor UIDs may be consumed from a message queue (e.g., RabbitMQ, Kafka, AWS SNS) rather than from an in-memory array. This setup **highlights the benefits** of avoiding backpressure:  
-We should avoid consuming a message if we cannot start processing it immediately. Working with message queues typically involves acknowledgements, which have **timeout** mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages. The `waitForAvailability` method addresses this need by checking availability as a preliminary action before consuming a message.  
+Working with message queues typically involves acknowledgements, which have **timeout** mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages. Backpressure on the semaphore means that messages experience longer delays before their corresponding jobs start execution. The `waitForAvailability` method addresses this need by checking availability as a preliminary action, **before** consuming a message.  
 Refer to the following adaptation of the previous example, where sensor UIDs are consumed from a message queue. This example overlooks error handling and message validation, for simplicity.
 
 ```ts
@@ -187,7 +191,7 @@ async function processConsumedMessages(): Promise<void> {
   // their completion.
 
   // Graceful termination: await the completion of all currently executing jobs.
-  await sensorAggregationSemaphore.waitTillAllExecutingJobsAreSettled();
+  await sensorAggregationSemaphore.waitForAllExecutingJobsToComplete();
 
   // Post processing.
   const errors = sensorAggregationSemaphore.extractUncaughtErrors();
@@ -205,7 +209,10 @@ async function processConsumedMessages(): Promise<void> {
 ```
 
 In reference to the above example, please note that `waitForAvailability` may be considered overkill or redundant if the job's duration is significantly shorter than the message timeout.  
-For example, if the message queue's timeout for acknowledging a message is 1 minute and a typical job duration is 1 second, the 59 second gap provides a substantial safety margin. In such cases, the preliminary `waitForAvailability` action can be omitted.
+For example, if the message queue's timeout for acknowledging a message is 1 minute and a typical job duration is 1 second, the 59 second gap provides a substantial safety margin. In such cases, the preliminary `waitForAvailability` action can be omitted.  
+On the other hand, given that the timeout is 30 seconds and a typical job duration is 20 seconds, using `waitForAvailability` is sensible. This is because `startExecution` might have to wait 20 seconds before the job can begin, resulting in a total of 40 seconds from the invocation of `startExecution` until the job completes.
+
+As a general rule, `waitForAvailability` is advisable whenever a timeout mechanism is involved, and the timeout period begins **before** the job starts execution.
 
 ## 2nd use-case: Single Job Execution
 
@@ -244,7 +251,7 @@ app.get('/user/', async (req, res) => {
 
 ## Graceful Termination
 
-The `waitTillAllExecutingJobsAreSettled` method is essential for scenarios where it is necessary to wait for all ongoing jobs to finish, such as logging a success message or executing subsequent logic.
+The `waitForAllExecutingJobsToComplete` method is essential for scenarios where it is necessary to wait for all ongoing jobs to finish, such as logging a success message or executing subsequent logic.
 
 A key use case for this method is ensuring stable unit tests. Each test should start with a clean state, independent of others, to avoid interference. This prevents scenarios where a job from Test A inadvertently continues to execute during Test B.
 

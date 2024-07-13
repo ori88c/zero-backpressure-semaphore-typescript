@@ -24,12 +24,12 @@ type PromiseResolveType = (value: void | PromiseLike<void>) => void;
  * responsibility on the user.
  * In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away these details and
  * reducing user responsibility. The acquire and release steps are handled implicitly by the execution
- * methods, similar to the RAII idiom in C++.
+ * methods, reminiscent of the RAII idiom in C++.
  * Method names are chosen to clearly convey their functionality.
  * 
  * ### Graceful Termination
  * All the job execution promises are tracked by the semaphore instance, ensuring no dangling promises.
- * This enables graceful termination via the `waitTillAllExecutingJobsAreSettled` method, which is
+ * This enables graceful termination via the `waitForAllExecutingJobsToComplete` method, which is
  * particularly useful for the multiple jobs execution use-case. This can help perform necessary
  * post-processing logic, and ensure a clear state between unit-tests.
  * If your component has a termination method (`stop`, `terminate`, or similar), keep that in mind.
@@ -42,11 +42,12 @@ type PromiseResolveType = (value: void | PromiseLike<void>) => void;
  * the `amountOfUncaughtErrors` getter method. This can be useful, for example, if the user wants to 
  * handle uncaught errors only after a certain threshold is reached.
  * 
- * ### Time Complexity
+ * ### Complexity
  * - **Initialization**: O(maxConcurrentJobs) for both time and space.
  * - **startExecution, waitForCompletion**: O(1) for both time and space, excluding the job execution itself.
- * - **waitTillAllExecutingJobsAreSettled**: O(maxConcurrentJobs) for both time and space, excluding job executions.
- * - **maxConcurrentJobs, isAvailable, amountOfCurrentlyExecutingJobs**: O(1) for both time and space.
+ * - **waitForAllExecutingJobsToComplete**: O(maxConcurrentJobs) for both time and space, excluding job executions.
+ * - All the getter methods have O(1) complexity for both time and space.
+ * 
  */
 export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     private readonly _availableRoomsStack: Array<number>;
@@ -166,9 +167,9 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     }
 
     /**
-     * waitTillAllExecutingJobsAreSettled
+     * waitForAllExecutingJobsToComplete
      * 
-     * This method allows the caller to wait until all currently executing jobs have settled.
+     * This method allows the caller to wait until all currently executing jobs have completed.
      * It is useful for ensuring that the application can terminate gracefully, without leaving 
      * any pending operations.
      * 
@@ -177,9 +178,9 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * you need to ensure that all tasks are completed before proceeding, such as during shutdown 
      * processes or between unit tests.
      * 
-     * @returns A promise that resolves when all currently executing jobs are settled.
+     * @returns A promise that resolves when all currently executing jobs are completed.
      */
-    public async waitTillAllExecutingJobsAreSettled(): Promise<void> {
+    public async waitForAllExecutingJobsToComplete(): Promise<void> {
         const pendingJobs = this._rooms.filter(job => job !== null);
         if (pendingJobs.length > 0) {
             await Promise.allSettled(pendingJobs);

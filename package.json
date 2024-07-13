@@ -1,7 +1,7 @@
 {
   "name": "zero-backpressure-semaphore-typescript",
-  "version": "1.2.0",
-  "description": "A classic semaphore with modern API, inspired by the RAII idiom. Offering backpressure control for enhanced efficiency, and includes a built-in method to gracefully await the completion of all currently executing jobs.",
+  "version": "2.0.0",
+  "description": "A classic semaphore with modern API, inspired by the RAII idiom. Offering backpressure control for enhanced efficiency, utilizing a communicative API that signals availability. Additionally, it incorporates mechanisms for graceful termination and error handling, making it suitable for complex scenarios.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ori88c/zero-backpressure-semaphore-typescript.git"

@@ -165,7 +165,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(semaphore.amountOfUncaughtErrors).toBe(0);
       });
 
-      test('waitTillAllExecutingJobsAreSettled: should resolve once all executing jobs are settled', async () => {
+      test('waitForAllExecutingJobsToComplete: should resolve once all executing jobs are completed', async () => {
         const maxConcurrentJobs = 12;
         const jobCompletionCallbacks: PromiseResolveCallbackType[] = [];
         const waitTillCompletionPromises: Promise<void>[] = [];
@@ -181,7 +181,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
           waitTillCompletionPromises.push(waitPromise);
         }
 
-        const waitTillAllAreSettledPromise = semaphore.waitTillAllExecutingJobsAreSettled();
+        const waitForAllExecutingJobsToCompletePromise = semaphore.waitForAllExecutingJobsToComplete();
         await resolveFast(); // Trigger the event loop.
 
         // Resolve jobs one by one.
@@ -201,7 +201,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         }
 
         expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
-        await waitTillAllAreSettledPromise;
+        await waitForAllExecutingJobsToCompletePromise;
         expect(semaphore.amountOfUncaughtErrors).toBe(0);
       });
 
@@ -321,7 +321,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
           jobCompletionCallback();
         }
 
-        await semaphore.waitTillAllExecutingJobsAreSettled();
+        await semaphore.waitForAllExecutingJobsToComplete();
         expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
       });
 
@@ -410,7 +410,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
           await semaphore.startExecution(async () => { throw error; });
         }
 
-        await semaphore.waitTillAllExecutingJobsAreSettled();
+        await semaphore.waitForAllExecutingJobsToComplete();
 
         expect(semaphore.amountOfUncaughtErrors).toBe(numberOfJobs);
         expect(semaphore.extractUncaughtErrors()).toEqual(jobErrors);

@@ -142,7 +142,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             // `startExecution`.
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
         }));
-        test('waitTillAllExecutingJobsAreSettled: should resolve once all executing jobs are settled', () => __awaiter(void 0, void 0, void 0, function* () {
+        test('waitForAllExecutingJobsToComplete: should resolve once all executing jobs are completed', () => __awaiter(void 0, void 0, void 0, function* () {
             const maxConcurrentJobs = 12;
             const jobCompletionCallbacks = [];
             const waitTillCompletionPromises = [];
@@ -154,7 +154,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 const waitPromise = semaphore.waitForCompletion(job);
                 waitTillCompletionPromises.push(waitPromise);
             }
-            const waitTillAllAreSettledPromise = semaphore.waitTillAllExecutingJobsAreSettled();
+            const waitForAllExecutingJobsToCompletePromise = semaphore.waitForAllExecutingJobsToComplete();
             yield resolveFast(); // Trigger the event loop.
             // Resolve jobs one by one.
             for (let jobNo = 0; jobNo < maxConcurrentJobs; ++jobNo) {
@@ -169,7 +169,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 waitTillCompletionPromises.shift();
             }
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
-            yield waitTillAllAreSettledPromise;
+            yield waitForAllExecutingJobsToCompletePromise;
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
         }));
         test('startExecution: background jobs should not exceed the max given concurrency', () => __awaiter(void 0, void 0, void 0, function* () {
@@ -265,7 +265,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             for (const jobCompletionCallback of jobCompletionCallbacks) {
                 jobCompletionCallback();
             }
-            yield semaphore.waitTillAllExecutingJobsAreSettled();
+            yield semaphore.waitForAllExecutingJobsToComplete();
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
         }));
         test('when _waitForAvailableRoom resolves, its awaiters should be executed according to their order in the microtasks queue', () => __awaiter(void 0, void 0, void 0, function* () {
@@ -341,7 +341,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 jobErrors.push(error);
                 yield semaphore.startExecution(() => __awaiter(void 0, void 0, void 0, function* () { throw error; }));
             }
-            yield semaphore.waitTillAllExecutingJobsAreSettled();
+            yield semaphore.waitForAllExecutingJobsToComplete();
             expect(semaphore.amountOfUncaughtErrors).toBe(numberOfJobs);
             expect(semaphore.extractUncaughtErrors()).toEqual(jobErrors);
             // Following extraction, the semaphore no longer holds the error references.
