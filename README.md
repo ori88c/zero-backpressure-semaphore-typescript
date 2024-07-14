@@ -150,11 +150,14 @@ async function handleDataAggregation(sensorUID): Promise<void> {
 ```
 
 Please note that in a real-world scenario, sensor UIDs may be consumed from a message queue (e.g., RabbitMQ, Kafka, AWS SNS) rather than from an in-memory array. This setup **highlights the benefits** of avoiding backpressure:  
-Working with message queues typically involves acknowledgements, which have **timeout** mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages. Backpressure on the semaphore means that messages experience longer delays before their corresponding jobs start execution. The `waitForAvailability` method addresses this need by checking availability as a preliminary action, **before** consuming a message.  
+Working with message queues typically involves acknowledgements, which have **timeout** mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages. Backpressure on the semaphore means that messages experience longer delays before their corresponding jobs start execution.  
 Refer to the following adaptation of the previous example, where sensor UIDs are consumed from a message queue. This example overlooks error handling and message validation, for simplicity.
 
 ```ts
-import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
+import { 
+  ZeroBackpressureSemaphore,
+  SemaphoreJob
+} from 'zero-backpressure-semaphore-typescript';
 
 const maxConcurrentAggregationJobs = 24;
 const sensorAggregationSemaphore =
@@ -165,6 +168,55 @@ const sensorAggregationSemaphore =
 const SENSOR_UIDS_TOPIC = "IOT_SENSOR_UIDS";
 const mqClient = new MessageQueueClient(SENSOR_UIDS_TOPIC);
 
+async function processConsumedMessages(): Promise<void> {
+  let numberOfProcessedMessages = 0;
+  let isQueueEmpty = false;
+
+  const processOneMessage: SemaphoreJob<void> = async (): Promise<void> => {
+    if (isQueueEmpty) {
+      return;
+    }
+
+    const message = await mqClient.receiveOneMessage();
+    if (!message) {
+      // Consider the queue as empty.
+      isQueueEmpty = true;
+      return;
+    }
+
+    ++numberOfProcessedMessages;
+    const { uid } = message.data;
+    await handleDataAggregation(uid);
+    await mqClient.removeMessageFromQueue(message);
+  };
+
+  do {
+    await sensorAggregationSemaphore.startExecution(processOneMessage);
+  } while (!isQueueEmpty);
+  // Note: at this stage, jobs might be still executing, as we did not wait for
+  // their completion.
+
+  // Graceful termination: await the completion of all currently executing jobs.
+  await sensorAggregationSemaphore.waitForAllExecutingJobsToComplete();
+
+  // Post processing.
+  const errors = sensorAggregationSemaphore.extractUncaughtErrors();
+  if (errors.length > 0) {
+    await updateFailedAggregationMetrics(errors);
+  }
+
+  // Summary.
+  const successfulJobsCount = numberOfProcessedMessages - errors.length;
+  logger.info(
+    `Successfully aggregated data from ${successfulJobsCount} IoT sensors, ` +
+    `with failures in aggregating data from ${errors.length} IoT sensors`
+  );
+}
+```
+
+Alternatively, the `waitForAvailability` method can address this need by checking availability as a preliminary action, **before** consuming a message.
+
+```ts
 async function processConsumedMessages(): Promise<void> {
   let numberOfProcessedMessages = 0;
 
@@ -187,24 +239,6 @@ async function processConsumedMessages(): Promise<void> {
     
     await mqClient.removeMessageFromQueue(message);
   } while (true);
-  // Note: at this stage, jobs might be still executing, as we did not wait for
-  // their completion.
-
-  // Graceful termination: await the completion of all currently executing jobs.
-  await sensorAggregationSemaphore.waitForAllExecutingJobsToComplete();
-
-  // Post processing.
-  const errors = sensorAggregationSemaphore.extractUncaughtErrors();
-  if (errors.length > 0) {
-    await updateFailedAggregationMetrics(errors);
-  }
-
-  // Summary.
-  const successfulJobsCount = numberOfProcessedMessages - errors.length;
-  logger.info(
-    `Successfully aggregated data from ${successfulJobsCount} IoT sensors, ` +
-    `with failures in aggregating data from ${errors.length} IoT sensors`
-  );
 }
 ```
 
@@ -212,7 +246,7 @@ In reference to the above example, please note that `waitForAvailability` may be
 For example, if the message queue's timeout for acknowledging a message is 1 minute and a typical job duration is 1 second, the 59 second gap provides a substantial safety margin. In such cases, the preliminary `waitForAvailability` action can be omitted.  
 On the other hand, given that the timeout is 30 seconds and a typical job duration is 20 seconds, using `waitForAvailability` is sensible. This is because `startExecution` might have to wait 20 seconds before the job can begin, resulting in a total of 40 seconds from the invocation of `startExecution` until the job completes.
 
-As a general rule, `waitForAvailability` is advisable whenever a timeout mechanism is involved, and the timeout period begins **before** the job starts execution.
+As a general rule, `waitForAvailability` is advisable whenever a timeout mechanism is involved, and the timeout period begins **before** the job starts execution. Note that the same effect can be achieved with `startExecution` alone, if the timeout-triggering logic is included in the job itself (such as, consuming a message). Both approaches are valid.
 
 ## 2nd use-case: Single Job Execution
 
