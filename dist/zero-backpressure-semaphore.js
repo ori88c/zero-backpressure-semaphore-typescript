@@ -118,6 +118,10 @@ class ZeroBackpressureSemaphore {
      * This method is particularly useful for executing multiple or background jobs, where no return
      * value is expected.
      *
+     * If the job throws an error, it is captured by the semaphore and can be accessed via the
+     * `extractUncaughtError` method. Users are encouraged to specify a custom `UncaughtErrorType`
+     * generic parameter to the class if jobs may throw errors.
+     *
      * @param job - The job to be executed once the semaphore is available.
      * @returns A promise that resolves when the job starts execution.
      */
@@ -145,6 +149,7 @@ class ZeroBackpressureSemaphore {
      * or rejects, you can continue the route handler's flow based on the result.
      *
      * @param job - The job to be executed once the semaphore is available.
+     * @throws - Error thrown by the job itself.
      * @returns A promise that resolves with the job's return value or rejects with its error.
      */
     waitForCompletion(job) {
