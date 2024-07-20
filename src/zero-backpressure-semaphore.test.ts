@@ -87,7 +87,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(lock.amountOfUncaughtErrors).toBe(0);
       });
 
-      test('waitForCompletion: should not exceed max concurrently executing jobs, when the amont of pending jobs is bigger than the amount of rooms', async () => {
+      test('waitForCompletion: should not exceed max concurrently executing jobs, when the amont of pending jobs is bigger than the amount of slots', async () => {
         const maxConcurrentJobs = 5;
         const numberOfJobs = 17 * maxConcurrentJobs - 1;
         const jobCompletionCallbacks: PromiseResolveCallbackType[] = [];
@@ -212,7 +212,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         const semaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentJobs);
 
         // Each main iteration starts execution of the current jobNo, and completing the
-        // (jobNo - maxConcurrentJobs)th job if exist, to make an available room for it.
+        // (jobNo - maxConcurrentJobs)th job if exist, to make an available slot for it.
         let numberOfFailedJobs = 0;
         for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
           const shouldJobSucceed = jobNo % 2 === 0; // Even attempts will succeed, odd attempts will throw.
@@ -249,7 +249,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
           expect(finishOldestJob).toBeDefined();
           finishOldestJob();
 
-          // Wait till jobNo start its execution, after we prepared a room for it.
+          // Wait till jobNo start its execution, after we prepared a slot for it.
           await waitTillExecutionStartsPromise;
         }
 
@@ -275,7 +275,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(semaphore.amountOfUncaughtErrors).toBe(numberOfFailedJobs);
       });
 
-      test('waitForAvailability: should resolve once at least one room is available', async () => {
+      test('waitForAvailability: should resolve once at least one slot is available', async () => {
         const maxConcurrentJobs = 11;
         const jobCompletionCallbacks: PromiseResolveCallbackType[] = [];
 
@@ -325,10 +325,10 @@ describe('ZeroBackpressureSemaphore tests', () => {
         expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
       });
 
-      test('when _waitForAvailableRoom resolves, its awaiters should be executed according to their order in the microtasks queue', async () => {
+      test('when _waitForAvailableSlot resolves, its awaiters should be executed according to their order in the microtasks queue', async () => {
         // This test does not directly assess the semaphore component. Instead, it verifies the
-        // correctness of the room-acquire mechanism, ensuring it honors the FIFO order of callers
-        // requesting an available room.
+        // correctness of the slot-acquire mechanism, ensuring it honors the FIFO order of callers
+        // requesting an available slot.
         // In JavaScript, it is common for a caller to create a promise (as the sole owner of
         // this promise instance) and await its resolution. It is less common for multiple promises
         // to await concurrently on the same shared promise instance. In that scenario, a pertinent
@@ -351,29 +351,29 @@ describe('ZeroBackpressureSemaphore tests', () => {
         
         // This specific usage of one promise instance being awaited by multiple other promises
         // may remind those with a C++ background of a condition_variable.
-        let notifyAvailableRoomExists: PromiseResolveCallbackType;
-        const waitForAvailableRoom = new Promise(res => notifyAvailableRoomExists = res);
+        let notifyAvailableSlotExists: PromiseResolveCallbackType;
+        const waitForAvailableSlot = new Promise(res => notifyAvailableSlotExists = res);
 
-        const awaiterAskingForRoom = async (awaiterID: number): Promise<void> => {
-          await waitForAvailableRoom;
+        const awaiterAskingForSlot = async (awaiterID: number): Promise<void> => {
+          await waitForAvailableSlot;
           actualExecutionOrderOfAwaiters.push(awaiterID);
           // Other awaiters in the microtasks queue will now be notified about the
-          // fulfillment of 'waitForAvailableRoom'.
+          // fulfillment of 'waitForAvailableSlot'.
         }
 
         const expectedExecutionOrder: number[] = [];
         const awaiterPromises: Promise<void>[] = [];
         for (let i = 0; i < numberOfAwaiters; ++i) {
           expectedExecutionOrder.push(i);
-          awaiterPromises.push(awaiterAskingForRoom(i));
+          awaiterPromises.push(awaiterAskingForSlot(i));
         }
 
         // Initially, no awaiter should be able to make progress.
         await Promise.race([...awaiterPromises, resolveFast()]);
         expect(actualExecutionOrderOfAwaiters.length).toBe(0);
 
-        // Notify that a room is available, triggering the awaiters in order.
-        notifyAvailableRoomExists();
+        // Notify that a slot is available, triggering the awaiters in order.
+        notifyAvailableSlotExists();
         await Promise.all(awaiterPromises);
 
         // The execution order should match the expected order.

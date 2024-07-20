@@ -25,15 +25,15 @@ npm i zero-backpressure-semaphore-typescript
 
 ## Key Features
 
-- __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked. Without backpressure control, the heap can become overloaded, resulting in space complexity of O(*semaphore-rooms* + *pending-jobs*) instead of O(*semaphore-rooms*).
+- __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked. Without backpressure control, the heap can become overloaded, resulting in space complexity of O(*semaphore-slots* + *pending-jobs*) instead of O(*semaphore-slots*).
 - __Graceful Termination__: Await the completion of all currently executing jobs via the `waitForAllExecutingJobsToComplete` method.
 - __High Efficiency__: All state-altering operations have a constant time complexity, O(1).
 - __Comprehensive documentation__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
 - __Robust Error Handling__: Uncaught errors from background jobs triggered by `startExecution` are captured and can be accessed using the `extractUncaughtErrors` method.
-- Fully covered by unit tests.
+- **Fully covered** by rigorous unit tests.
 - Self-explanatory method names.
 - No external runtime dependencies: Only development dependencies are used.
-- ES6 Compatibility.
+- ES6 Compatibility: The `tsconfig` target is set to ES6, ensuring compatibility with ES6 environments.
 - TypeScript support.
 
 ## Breaking Change in Version 2.0.0
@@ -312,7 +312,7 @@ However, there are a few exceptional cases where the user can safely avoid extra
 
 Mitigating backpressure is primarily associated with the `startExecution` method, particularly in scenarios involving multiple jobs. However, the single-job use case may certainly inflict backpressure on the Node.js micro-tasks queue.
 
-For instance, consider a situation where 1000 concurrently executing route handlers are each awaiting the completion of their own `waitForCompletion` execution, while the semaphore is unavailable. In such cases, all handlers will internally wait on the semaphore's `_availableRoomExists` private property, competing to acquire the semaphore once it becomes available.
+For instance, consider a situation where 1K concurrently executing route handlers are each awaiting the completion of their own `waitForCompletion` execution, while the semaphore is unavailable. In such cases, all handlers will internally wait on the semaphore's `_availableSlotExists` private property, competing to acquire the semaphore once it becomes available.
 
 ## Naming Convention
 

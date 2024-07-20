@@ -47,10 +47,10 @@ export type SemaphoreJob<T> = () => Promise<T>;
  *
  */
 export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
-    private readonly _availableRoomsStack;
-    private readonly _rooms;
-    private _waitForAvailableRoom?;
-    private _notifyAvailableRoomExists?;
+    private readonly _availableSlotsStack;
+    private readonly _slots;
+    private _waitForAvailableSlot?;
+    private _notifyAvailableSlotExists?;
     private _uncaughtErrors;
     constructor(maxConcurrentJobs: number);
     /**
@@ -135,7 +135,7 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     /**
      * waitForAvailability
      *
-     * This method resolves once at least one room (slot) is available for job execution.
+     * This method resolves once at least one slot (slot) is available for job execution.
      * In other words, it resolves when the semaphore is available to trigger a new job immediately.
      *
      * ### Example Use Case
@@ -149,7 +149,7 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * To prevent such potential backpressure, users can utilize the `waitForAvailability` method
      * before consuming the next message.
      *
-     * @returns A promise that resolves once at least one room is available.
+     * @returns A promise that resolves once at least one slot is available.
      */
     waitForAvailability(): Promise<void>;
     /**
@@ -172,7 +172,7 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * @returns An array of uncaught errors from background jobs triggered by `startExecution`.
      */
     extractUncaughtErrors(): UncaughtErrorType[];
-    private _getAvailableRoom;
+    private _getAvailableSlot;
     /**
      * _handleJobExecution
      *
@@ -182,15 +182,15 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      *
      * ### Behavior
      * - Waits for the job to either return a value or throw an error.
-     * - Updates the internal state to make the allotted room available again once the job is finished.
+     * - Updates the internal state to make the allotted slot available again once the job is finished.
      *
-     * @param job - The job to be executed in the given room.
-     * @param allottedRoom - The room number in which the job should be executed.
+     * @param job - The job to be executed in the given slot.
+     * @param allottedSlot - The slot number in which the job should be executed.
      * @param isBackgroundJob - A flag indicating whether the caller expects a return value to proceed
      *                          with its work. If `true`, no return value is expected, and any error
      *                          thrown by the job should not be propagated.
      * @returns A promise that resolves with the job's return value or rejects with its error.
      *          Rejection occurs only if triggered by `waitForCompletion`.
      */
-    _handleJobExecution(job: SemaphoreJob<T>, allottedRoom: number, isBackgroundJob: boolean): Promise<T>;
+    _handleJobExecution(job: SemaphoreJob<T>, allottedSlot: number, isBackgroundJob: boolean): Promise<T>;
 }

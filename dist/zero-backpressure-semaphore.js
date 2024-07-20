@@ -69,11 +69,11 @@ class ZeroBackpressureSemaphore {
             throw new Error('ZeroBackpressureSemaphore expects a natural number of maxConcurrentJobs, received ' +
                 `${maxConcurrentJobs}`);
         }
-        this._availableRoomsStack = new Array(maxConcurrentJobs).fill(0);
+        this._availableSlotsStack = new Array(maxConcurrentJobs).fill(0);
         for (let i = 1; i < maxConcurrentJobs; ++i) {
-            this._availableRoomsStack[i] = i;
+            this._availableSlotsStack[i] = i;
         }
-        this._rooms = new Array(maxConcurrentJobs).fill(null);
+        this._slots = new Array(maxConcurrentJobs).fill(null);
     }
     /**
      * maxConcurrentJobs
@@ -81,7 +81,7 @@ class ZeroBackpressureSemaphore {
      * @returns The maximum number of concurrent jobs as specified in the constructor.
      */
     get maxConcurrentJobs() {
-        return this._rooms.length;
+        return this._slots.length;
     }
     /**
      * isAvailable
@@ -89,7 +89,7 @@ class ZeroBackpressureSemaphore {
      * @returns True if there is an available job slot, otherwise false.
      */
     get isAvailable() {
-        return this._availableRoomsStack.length > 0;
+        return this._availableSlotsStack.length > 0;
     }
     /**
      * amountOfCurrentlyExecutingJobs
@@ -97,7 +97,7 @@ class ZeroBackpressureSemaphore {
      * @returns The number of jobs currently being executed by the semaphore.
      */
     get amountOfCurrentlyExecutingJobs() {
-        return this._rooms.length - this._availableRoomsStack.length;
+        return this._slots.length - this._availableSlotsStack.length;
     }
     /**
      * amountOfUncaughtErrors
@@ -127,8 +127,8 @@ class ZeroBackpressureSemaphore {
      */
     startExecution(backgroundJob) {
         return __awaiter(this, void 0, void 0, function* () {
-            const availableRoom = yield this._getAvailableRoom();
-            this._rooms[availableRoom] = this._handleJobExecution(backgroundJob, availableRoom, true);
+            const availableSlot = yield this._getAvailableSlot();
+            this._slots[availableSlot] = this._handleJobExecution(backgroundJob, availableSlot, true);
             return;
         });
     }
@@ -154,8 +154,8 @@ class ZeroBackpressureSemaphore {
      */
     waitForCompletion(job) {
         return __awaiter(this, void 0, void 0, function* () {
-            const availableRoom = yield this._getAvailableRoom();
-            return this._rooms[availableRoom] = this._handleJobExecution(job, availableRoom, false);
+            const availableSlot = yield this._getAvailableSlot();
+            return this._slots[availableSlot] = this._handleJobExecution(job, availableSlot, false);
         });
     }
     /**
@@ -174,7 +174,7 @@ class ZeroBackpressureSemaphore {
      */
     waitForAllExecutingJobsToComplete() {
         return __awaiter(this, void 0, void 0, function* () {
-            const pendingJobs = this._rooms.filter(job => job !== null);
+            const pendingJobs = this._slots.filter(job => job !== null);
             if (pendingJobs.length > 0) {
                 yield Promise.allSettled(pendingJobs);
             }
@@ -183,7 +183,7 @@ class ZeroBackpressureSemaphore {
     /**
      * waitForAvailability
      *
-     * This method resolves once at least one room (slot) is available for job execution.
+     * This method resolves once at least one slot (slot) is available for job execution.
      * In other words, it resolves when the semaphore is available to trigger a new job immediately.
      *
      * ### Example Use Case
@@ -197,12 +197,12 @@ class ZeroBackpressureSemaphore {
      * To prevent such potential backpressure, users can utilize the `waitForAvailability` method
      * before consuming the next message.
      *
-     * @returns A promise that resolves once at least one room is available.
+     * @returns A promise that resolves once at least one slot is available.
      */
     waitForAvailability() {
         return __awaiter(this, void 0, void 0, function* () {
-            while (this._waitForAvailableRoom) {
-                yield this._waitForAvailableRoom;
+            while (this._waitForAvailableSlot) {
+                yield this._waitForAvailableSlot;
             }
         });
     }
@@ -230,17 +230,17 @@ class ZeroBackpressureSemaphore {
         this._uncaughtErrors = [];
         return errors;
     }
-    _getAvailableRoom() {
+    _getAvailableSlot() {
         return __awaiter(this, void 0, void 0, function* () {
-            while (this._waitForAvailableRoom) {
-                yield this._waitForAvailableRoom;
+            while (this._waitForAvailableSlot) {
+                yield this._waitForAvailableSlot;
             }
-            const availableRoom = this._availableRoomsStack.pop();
+            const availableSlot = this._availableSlotsStack.pop();
             // Handle state change: from available to unavailable.
-            if (this._availableRoomsStack.length === 0) {
-                this._waitForAvailableRoom = new Promise(resolve => this._notifyAvailableRoomExists = resolve);
+            if (this._availableSlotsStack.length === 0) {
+                this._waitForAvailableSlot = new Promise(resolve => this._notifyAvailableSlotExists = resolve);
             }
-            return availableRoom;
+            return availableSlot;
         });
     }
     /**
@@ -252,17 +252,17 @@ class ZeroBackpressureSemaphore {
      *
      * ### Behavior
      * - Waits for the job to either return a value or throw an error.
-     * - Updates the internal state to make the allotted room available again once the job is finished.
+     * - Updates the internal state to make the allotted slot available again once the job is finished.
      *
-     * @param job - The job to be executed in the given room.
-     * @param allottedRoom - The room number in which the job should be executed.
+     * @param job - The job to be executed in the given slot.
+     * @param allottedSlot - The slot number in which the job should be executed.
      * @param isBackgroundJob - A flag indicating whether the caller expects a return value to proceed
      *                          with its work. If `true`, no return value is expected, and any error
      *                          thrown by the job should not be propagated.
      * @returns A promise that resolves with the job's return value or rejects with its error.
      *          Rejection occurs only if triggered by `waitForCompletion`.
      */
-    _handleJobExecution(job, allottedRoom, isBackgroundJob) {
+    _handleJobExecution(job, allottedSlot, isBackgroundJob) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const jobResult = yield job();
@@ -278,13 +278,13 @@ class ZeroBackpressureSemaphore {
                 this._uncaughtErrors.push(err);
             }
             finally {
-                this._rooms[allottedRoom] = null;
-                this._availableRoomsStack.push(allottedRoom);
+                this._slots[allottedSlot] = null;
+                this._availableSlotsStack.push(allottedSlot);
                 // Handle state change: from unavailable to available.
-                if (this._availableRoomsStack.length === 1) {
-                    this._notifyAvailableRoomExists();
-                    this._waitForAvailableRoom = undefined;
-                    this._notifyAvailableRoomExists = undefined;
+                if (this._availableSlotsStack.length === 1) {
+                    this._notifyAvailableSlotExists();
+                    this._waitForAvailableSlot = undefined;
+                    this._notifyAvailableSlotExists = undefined;
                 }
             }
         });

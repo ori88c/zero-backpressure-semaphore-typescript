@@ -50,15 +50,15 @@ type PromiseResolveType = (value: void | PromiseLike<void>) => void;
  * 
  */
 export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
-    private readonly _availableRoomsStack: Array<number>;
-    private readonly _rooms: Array<Promise<T> | null>;
+    private readonly _availableSlotsStack: Array<number>;
+    private readonly _slots: Array<Promise<T> | null>;
 
-    // Room availability indicator:
-    // A pending `_waitForAvailableRoom` promise indicates "all rooms are taken". Its resolve
+    // Slot availability indicator:
+    // A pending `_waitForAvailableSlot` promise indicates "all slots are taken". Its resolve
     // function is used to notify all awaiters of a state change. This approach has similarities
     // with a condition_variable in C++.
-    private _waitForAvailableRoom?: Promise<void>;
-    private _notifyAvailableRoomExists?: PromiseResolveType; // Resolving the above.
+    private _waitForAvailableSlot?: Promise<void>;
+    private _notifyAvailableSlotExists?: PromiseResolveType; // Resolving the above.
 
     // Stores uncaught errors from background jobs triggered by `startExecution`.
     private _uncaughtErrors: UncaughtErrorType[] = [];
@@ -78,12 +78,12 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
             );
         }
 
-        this._availableRoomsStack = new Array<number>(maxConcurrentJobs).fill(0);
+        this._availableSlotsStack = new Array<number>(maxConcurrentJobs).fill(0);
         for (let i = 1; i < maxConcurrentJobs; ++i) {
-            this._availableRoomsStack[i] = i;
+            this._availableSlotsStack[i] = i;
         }
         
-        this._rooms = new Array(maxConcurrentJobs).fill(null);
+        this._slots = new Array(maxConcurrentJobs).fill(null);
     }
 
     /**
@@ -92,7 +92,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * @returns The maximum number of concurrent jobs as specified in the constructor.
      */	
     public get maxConcurrentJobs(): number {
-        return this._rooms.length;
+        return this._slots.length;
     }
     
     /**
@@ -101,7 +101,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * @returns True if there is an available job slot, otherwise false.
      */	
     public get isAvailable(): boolean {
-        return this._availableRoomsStack.length > 0;
+        return this._availableSlotsStack.length > 0;
     }
     
     /**
@@ -110,7 +110,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * @returns The number of jobs currently being executed by the semaphore.
      */	
     public get amountOfCurrentlyExecutingJobs(): number {
-        return this._rooms.length - this._availableRoomsStack.length;
+        return this._slots.length - this._availableSlotsStack.length;
     }
 
     /**
@@ -141,8 +141,8 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * @returns A promise that resolves when the job starts execution.
      */	
     public async startExecution(backgroundJob: SemaphoreJob<T>): Promise<void> {
-        const availableRoom = await this._getAvailableRoom();
-        this._rooms[availableRoom] = this._handleJobExecution(backgroundJob, availableRoom, true);
+        const availableSlot = await this._getAvailableSlot();
+        this._slots[availableSlot] = this._handleJobExecution(backgroundJob, availableSlot, true);
         return;
     }
 
@@ -167,8 +167,8 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * @returns A promise that resolves with the job's return value or rejects with its error.
      */
     public async waitForCompletion(job: SemaphoreJob<T>): Promise<T> {
-        const availableRoom = await this._getAvailableRoom();
-        return this._rooms[availableRoom] = this._handleJobExecution(job, availableRoom, false);
+        const availableSlot = await this._getAvailableSlot();
+        return this._slots[availableSlot] = this._handleJobExecution(job, availableSlot, false);
     }
 
     /**
@@ -186,7 +186,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * @returns A promise that resolves when all currently executing jobs are completed.
      */
     public async waitForAllExecutingJobsToComplete(): Promise<void> {
-        const pendingJobs = this._rooms.filter(job => job !== null);
+        const pendingJobs = this._slots.filter(job => job !== null);
         if (pendingJobs.length > 0) {
             await Promise.allSettled(pendingJobs);
         }
@@ -195,7 +195,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     /**
      * waitForAvailability
      * 
-     * This method resolves once at least one room (slot) is available for job execution.
+     * This method resolves once at least one slot (slot) is available for job execution.
      * In other words, it resolves when the semaphore is available to trigger a new job immediately.
      * 
      * ### Example Use Case
@@ -209,11 +209,11 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * To prevent such potential backpressure, users can utilize the `waitForAvailability` method
      * before consuming the next message.
      * 
-     * @returns A promise that resolves once at least one room is available.
+     * @returns A promise that resolves once at least one slot is available.
      */
     public async waitForAvailability(): Promise<void> {
-        while (this._waitForAvailableRoom) {
-            await this._waitForAvailableRoom;
+        while (this._waitForAvailableSlot) {
+            await this._waitForAvailableSlot;
         }
     }
 
@@ -242,21 +242,21 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
         return errors;
     }
 
-    private async _getAvailableRoom(): Promise<number> {
-        while (this._waitForAvailableRoom) {
-            await this._waitForAvailableRoom;
+    private async _getAvailableSlot(): Promise<number> {
+        while (this._waitForAvailableSlot) {
+            await this._waitForAvailableSlot;
         }
         
-        const availableRoom = this._availableRoomsStack.pop();
+        const availableSlot = this._availableSlotsStack.pop();
         
         // Handle state change: from available to unavailable.
-        if (this._availableRoomsStack.length === 0) {
-            this._waitForAvailableRoom = new Promise<void>(
-                resolve => this._notifyAvailableRoomExists = resolve
+        if (this._availableSlotsStack.length === 0) {
+            this._waitForAvailableSlot = new Promise<void>(
+                resolve => this._notifyAvailableSlotExists = resolve
             );
         }
 
-        return availableRoom;
+        return availableSlot;
     }
 
     /**
@@ -268,10 +268,10 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * 
      * ### Behavior
      * - Waits for the job to either return a value or throw an error.
-     * - Updates the internal state to make the allotted room available again once the job is finished.
+     * - Updates the internal state to make the allotted slot available again once the job is finished.
      * 
-     * @param job - The job to be executed in the given room.
-     * @param allottedRoom - The room number in which the job should be executed.
+     * @param job - The job to be executed in the given slot.
+     * @param allottedSlot - The slot number in which the job should be executed.
      * @param isBackgroundJob - A flag indicating whether the caller expects a return value to proceed
      *                          with its work. If `true`, no return value is expected, and any error
      *                          thrown by the job should not be propagated.
@@ -280,7 +280,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      */
     public async _handleJobExecution(
         job: SemaphoreJob<T>,
-        allottedRoom: number,
+        allottedSlot: number,
         isBackgroundJob: boolean
     ): Promise<T> {
         try {
@@ -296,14 +296,14 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
             // Triggered by `startExecution`: A background job.
             this._uncaughtErrors.push(err);
         } finally {
-            this._rooms[allottedRoom] = null;
-            this._availableRoomsStack.push(allottedRoom);
+            this._slots[allottedSlot] = null;
+            this._availableSlotsStack.push(allottedSlot);
             
             // Handle state change: from unavailable to available.
-            if (this._availableRoomsStack.length === 1) {
-                this._notifyAvailableRoomExists();
-                this._waitForAvailableRoom = undefined;
-                this._notifyAvailableRoomExists = undefined;
+            if (this._availableSlotsStack.length === 1) {
+                this._notifyAvailableSlotExists();
+                this._waitForAvailableSlot = undefined;
+                this._notifyAvailableSlotExists = undefined;
             }
         }
     }
