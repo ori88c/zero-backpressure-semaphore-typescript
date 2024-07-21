@@ -1,6 +1,6 @@
 {
   "name": "zero-backpressure-semaphore-typescript",
-  "version": "2.0.2",
+  "version": "3.0.0",
   "description": "A classic semaphore with modern API, inspired by the RAII idiom. Offering backpressure control for enhanced efficiency, utilizing a communicative API that signals availability. Additionally, it incorporates mechanisms for graceful termination and error handling, making it suitable for complex scenarios.",
   "repository": {
     "type": "git",
@@ -39,7 +39,7 @@
     "nodejs",
     "typescript",
     "ts",
-    "ES6"
+    "ES2020"
   ],
   "engines": {
     "node": ">=14.5.0"

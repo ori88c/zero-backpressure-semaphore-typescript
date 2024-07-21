@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ZeroBackpressureSemaphore = void 0;
 /**
@@ -125,12 +116,10 @@ class ZeroBackpressureSemaphore {
      * @param job - The job to be executed once the semaphore is available.
      * @returns A promise that resolves when the job starts execution.
      */
-    startExecution(backgroundJob) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const availableSlot = yield this._getAvailableSlot();
-            this._slots[availableSlot] = this._handleJobExecution(backgroundJob, availableSlot, true);
-            return;
-        });
+    async startExecution(backgroundJob) {
+        const availableSlot = await this._getAvailableSlot();
+        this._slots[availableSlot] = this._handleJobExecution(backgroundJob, availableSlot, true);
+        return;
     }
     /**
      * waitForCompletion
@@ -152,11 +141,9 @@ class ZeroBackpressureSemaphore {
      * @throws - Error thrown by the job itself.
      * @returns A promise that resolves with the job's return value or rejects with its error.
      */
-    waitForCompletion(job) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const availableSlot = yield this._getAvailableSlot();
-            return this._slots[availableSlot] = this._handleJobExecution(job, availableSlot, false);
-        });
+    async waitForCompletion(job) {
+        const availableSlot = await this._getAvailableSlot();
+        return this._slots[availableSlot] = this._handleJobExecution(job, availableSlot, false);
     }
     /**
      * waitForAllExecutingJobsToComplete
@@ -172,13 +159,11 @@ class ZeroBackpressureSemaphore {
      *
      * @returns A promise that resolves when all currently executing jobs are completed.
      */
-    waitForAllExecutingJobsToComplete() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const pendingJobs = this._slots.filter(job => job !== null);
-            if (pendingJobs.length > 0) {
-                yield Promise.allSettled(pendingJobs);
-            }
-        });
+    async waitForAllExecutingJobsToComplete() {
+        const pendingJobs = this._slots.filter(job => job !== null);
+        if (pendingJobs.length > 0) {
+            await Promise.allSettled(pendingJobs);
+        }
     }
     /**
      * waitForAvailability
@@ -199,12 +184,10 @@ class ZeroBackpressureSemaphore {
      *
      * @returns A promise that resolves once at least one slot is available.
      */
-    waitForAvailability() {
-        return __awaiter(this, void 0, void 0, function* () {
-            while (this._waitForAvailableSlot) {
-                yield this._waitForAvailableSlot;
-            }
-        });
+    async waitForAvailability() {
+        while (this._waitForAvailableSlot) {
+            await this._waitForAvailableSlot;
+        }
     }
     /**
      * extractUncaughtErrors
@@ -230,18 +213,16 @@ class ZeroBackpressureSemaphore {
         this._uncaughtErrors = [];
         return errors;
     }
-    _getAvailableSlot() {
-        return __awaiter(this, void 0, void 0, function* () {
-            while (this._waitForAvailableSlot) {
-                yield this._waitForAvailableSlot;
-            }
-            const availableSlot = this._availableSlotsStack.pop();
-            // Handle state change: from available to unavailable.
-            if (this._availableSlotsStack.length === 0) {
-                this._waitForAvailableSlot = new Promise(resolve => this._notifyAvailableSlotExists = resolve);
-            }
-            return availableSlot;
-        });
+    async _getAvailableSlot() {
+        while (this._waitForAvailableSlot) {
+            await this._waitForAvailableSlot;
+        }
+        const availableSlot = this._availableSlotsStack.pop();
+        // Handle state change: from available to unavailable.
+        if (this._availableSlotsStack.length === 0) {
+            this._waitForAvailableSlot = new Promise(resolve => this._notifyAvailableSlotExists = resolve);
+        }
+        return availableSlot;
     }
     /**
      * _handleJobExecution
@@ -262,32 +243,30 @@ class ZeroBackpressureSemaphore {
      * @returns A promise that resolves with the job's return value or rejects with its error.
      *          Rejection occurs only if triggered by `waitForCompletion`.
      */
-    _handleJobExecution(job, allottedSlot, isBackgroundJob) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const jobResult = yield job();
-                return jobResult;
+    async _handleJobExecution(job, allottedSlot, isBackgroundJob) {
+        try {
+            const jobResult = await job();
+            return jobResult;
+        }
+        catch (err) {
+            if (!isBackgroundJob) {
+                // Triggered by `waitForCompletion`:
+                // Caller is awaiting either fulfillment or rejection.
+                throw err;
             }
-            catch (err) {
-                if (!isBackgroundJob) {
-                    // Triggered by `waitForCompletion`:
-                    // Caller is awaiting either fulfillment or rejection.
-                    throw err;
-                }
-                // Triggered by `startExecution`: A background job.
-                this._uncaughtErrors.push(err);
+            // Triggered by `startExecution`: A background job.
+            this._uncaughtErrors.push(err);
+        }
+        finally {
+            this._slots[allottedSlot] = null;
+            this._availableSlotsStack.push(allottedSlot);
+            // Handle state change: from unavailable to available.
+            if (this._availableSlotsStack.length === 1) {
+                this._notifyAvailableSlotExists();
+                this._waitForAvailableSlot = undefined;
+                this._notifyAvailableSlotExists = undefined;
             }
-            finally {
-                this._slots[allottedSlot] = null;
-                this._availableSlotsStack.push(allottedSlot);
-                // Handle state change: from unavailable to available.
-                if (this._availableSlotsStack.length === 1) {
-                    this._notifyAvailableSlotExists();
-                    this._waitForAvailableSlot = undefined;
-                    this._notifyAvailableSlotExists = undefined;
-                }
-            }
-        });
+        }
     }
 }
 exports.ZeroBackpressureSemaphore = ZeroBackpressureSemaphore;

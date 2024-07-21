@@ -33,8 +33,12 @@ npm i zero-backpressure-semaphore-typescript
 - **Fully covered** by rigorous unit tests.
 - Self-explanatory method names.
 - No external runtime dependencies: Only development dependencies are used.
-- ES6 Compatibility: The `tsconfig` target is set to ES6, ensuring compatibility with ES6 environments.
+- ES2020 Compatibility: The `tsconfig` target is set to ES2020, ensuring compatibility with ES2020 environments.
 - TypeScript support.
+
+## Breaking Change in Version 3.0.0
+
+In version 3.0.0, the target compatibility has been upgraded from ES6 to ES2020. This change was made to leverage the widespread adoption of ES2020, its native support for async/await, and the use of `Promise.allSettled` within the semaphore.
 
 ## Breaking Change in Version 2.0.0
 
