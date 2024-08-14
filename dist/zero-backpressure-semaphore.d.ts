@@ -135,7 +135,7 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     /**
      * waitForAvailability
      *
-     * This method resolves once at least one slot (slot) is available for job execution.
+     * This method resolves once at least one slot is available for job execution.
      * In other words, it resolves when the semaphore is available to trigger a new job immediately.
      *
      * ### Example Use Case
@@ -148,6 +148,13 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * before their corresponding job starts, increasing the chances of their timeout being exceeded.
      * To prevent such potential backpressure, users can utilize the `waitForAvailability` method
      * before consuming the next message.
+     *
+     * ### Rarely Needed
+     * This method can be useful when the system is experiencing high load (as indicated by CPU and/or memory
+     * usage metrics), and you want to pause further async operations until an available job slot opens up.
+     * However, the same effect can be achieved with `startExecution` alone if the async logic
+     * (which you intend to delay until availability) is performed *inside the job* rather than as a
+     * preliminary step. Therefore, `waitForAvailability` is more of a design choice than a necessity.
      *
      * @returns A promise that resolves once at least one slot is available.
      */

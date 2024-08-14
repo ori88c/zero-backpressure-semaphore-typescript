@@ -51,7 +51,7 @@ type PromiseResolveType = (value: void | PromiseLike<void>) => void;
  */
 export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     private readonly _availableSlotsStack: Array<number>;
-    private readonly _slots: Array<Promise<T> | null>;
+    private readonly _slots: Array<Promise<T> | undefined>;
 
     // Slot availability indicator:
     // A pending `_waitForAvailableSlot` promise indicates "all slots are taken". Its resolve
@@ -83,7 +83,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
             this._availableSlotsStack[i] = i;
         }
         
-        this._slots = new Array(maxConcurrentJobs).fill(null);
+        this._slots = new Array(maxConcurrentJobs).fill(undefined);
     }
 
     /**
@@ -186,7 +186,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * @returns A promise that resolves when all currently executing jobs are completed.
      */
     public async waitForAllExecutingJobsToComplete(): Promise<void> {
-        const pendingJobs = this._slots.filter(job => job !== null);
+        const pendingJobs = this._slots.filter(job => job !== undefined);
         if (pendingJobs.length > 0) {
             await Promise.allSettled(pendingJobs);
         }
@@ -195,7 +195,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     /**
      * waitForAvailability
      * 
-     * This method resolves once at least one slot (slot) is available for job execution.
+     * This method resolves once at least one slot is available for job execution.
      * In other words, it resolves when the semaphore is available to trigger a new job immediately.
      * 
      * ### Example Use Case
@@ -208,6 +208,13 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * before their corresponding job starts, increasing the chances of their timeout being exceeded.
      * To prevent such potential backpressure, users can utilize the `waitForAvailability` method
      * before consuming the next message.
+     * 
+     * ### Rarely Needed
+     * This method can be useful when the system is experiencing high load (as indicated by CPU and/or memory
+     * usage metrics), and you want to pause further async operations until an available job slot opens up.
+     * However, the same effect can be achieved with `startExecution` alone if the async logic
+     * (which you intend to delay until availability) is performed *inside the job* rather than as a
+     * preliminary step. Therefore, `waitForAvailability` is more of a design choice than a necessity.
      * 
      * @returns A promise that resolves once at least one slot is available.
      */
@@ -296,7 +303,7 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
             // Triggered by `startExecution`: A background job.
             this._uncaughtErrors.push(err);
         } finally {
-            this._slots[allottedSlot] = null;
+            this._slots[allottedSlot] = undefined;
             this._availableSlotsStack.push(allottedSlot);
             
             // Handle state change: from unavailable to available.

@@ -64,7 +64,7 @@ class ZeroBackpressureSemaphore {
         for (let i = 1; i < maxConcurrentJobs; ++i) {
             this._availableSlotsStack[i] = i;
         }
-        this._slots = new Array(maxConcurrentJobs).fill(null);
+        this._slots = new Array(maxConcurrentJobs).fill(undefined);
     }
     /**
      * maxConcurrentJobs
@@ -160,7 +160,7 @@ class ZeroBackpressureSemaphore {
      * @returns A promise that resolves when all currently executing jobs are completed.
      */
     async waitForAllExecutingJobsToComplete() {
-        const pendingJobs = this._slots.filter(job => job !== null);
+        const pendingJobs = this._slots.filter(job => job !== undefined);
         if (pendingJobs.length > 0) {
             await Promise.allSettled(pendingJobs);
         }
@@ -168,7 +168,7 @@ class ZeroBackpressureSemaphore {
     /**
      * waitForAvailability
      *
-     * This method resolves once at least one slot (slot) is available for job execution.
+     * This method resolves once at least one slot is available for job execution.
      * In other words, it resolves when the semaphore is available to trigger a new job immediately.
      *
      * ### Example Use Case
@@ -181,6 +181,13 @@ class ZeroBackpressureSemaphore {
      * before their corresponding job starts, increasing the chances of their timeout being exceeded.
      * To prevent such potential backpressure, users can utilize the `waitForAvailability` method
      * before consuming the next message.
+     *
+     * ### Rarely Needed
+     * This method can be useful when the system is experiencing high load (as indicated by CPU and/or memory
+     * usage metrics), and you want to pause further async operations until an available job slot opens up.
+     * However, the same effect can be achieved with `startExecution` alone if the async logic
+     * (which you intend to delay until availability) is performed *inside the job* rather than as a
+     * preliminary step. Therefore, `waitForAvailability` is more of a design choice than a necessity.
      *
      * @returns A promise that resolves once at least one slot is available.
      */
@@ -258,7 +265,7 @@ class ZeroBackpressureSemaphore {
             this._uncaughtErrors.push(err);
         }
         finally {
-            this._slots[allottedSlot] = null;
+            this._slots[allottedSlot] = undefined;
             this._availableSlotsStack.push(allottedSlot);
             // Handle state change: from unavailable to available.
             if (this._availableSlotsStack.length === 1) {
