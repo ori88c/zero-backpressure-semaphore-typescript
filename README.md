@@ -1,4 +1,4 @@
-<h2 align="middle">zero-backpressure-semaphore-typescript</h2>
+<h2 align="middle">Zero Backpressure Semaphore Typescript</h2>
 
 The `ZeroBackpressureSemaphore` class implements a semaphore for Node.js projects, allowing users to limit the number of concurrently executing jobs.  
 This implementation does not queue pending jobs, thereby eliminating backpressure. As a result, users have better control over memory footprint, which enhances performance by reducing garbage-collector overhead.
@@ -9,21 +9,7 @@ The design addresses the two primary semaphore use cases in Node.js:
 
 Each use case necessitates distinct handling capabilities, which will be discussed separately with accompanying examples.
 
-## Modern API Design
-
-Traditional semaphore APIs require explicit *acquire* and *release* steps, adding overhead and responsibility for the user. Additionally, they introduce the risk of deadlocking the application if one forgets to *release*, for example, due to a thrown exception.
-
-In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away these details and reducing user responsibility. The *acquire* and *release* steps are handled implicitly by the execution methods, reminiscent of the RAII idiom in C++.
-
-Method names are chosen to clearly convey their functionality.
-
-## Installing
-
-```bash
-npm i zero-backpressure-semaphore-typescript
-```
-
-## Key Features
+## Key Features :sparkles:
 
 - __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked. Without backpressure control, the heap can become overloaded, resulting in space complexity of O(*semaphore-slots* + *pending-jobs*) instead of O(*semaphore-slots*).
 - __Graceful Termination__: Await the completion of all currently executing jobs via the `waitForAllExecutingJobsToComplete` method.
@@ -35,6 +21,14 @@ npm i zero-backpressure-semaphore-typescript
 - No external runtime dependencies: Only development dependencies are used.
 - ES2020 Compatibility: The `tsconfig` target is set to ES2020, ensuring compatibility with ES2020 environments.
 - TypeScript support.
+
+## Modern API Design :rocket:
+
+Traditional semaphore APIs require explicit *acquire* and *release* steps, adding overhead and responsibility for the user. Additionally, they introduce the risk of deadlocking the application if one forgets to *release*, for example, due to a thrown exception.
+
+In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away these details and reducing user responsibility. The *acquire* and *release* steps are handled implicitly by the execution methods, reminiscent of the RAII idiom in C++.
+
+Method names are chosen to clearly convey their functionality.
 
 ## Breaking Change in Version 3.0.0
 
@@ -287,7 +281,7 @@ app.get('/user/', async (req, res) => {
 });
 ```
 
-## Graceful Termination
+## Graceful Termination :hourglass:
 
 The `waitForAllExecutingJobsToComplete` method is essential for scenarios where it is necessary to wait for all ongoing jobs to finish, such as logging a success message or executing subsequent logic.
 
@@ -295,7 +289,7 @@ A key use case for this method is ensuring stable unit tests. Each test should s
 
 If your component has a termination method (`stop`, `terminate`, or similar), keep that in mind.
 
-## Error Handling for Background Jobs
+## Error Handling for Background Jobs :warning:
 
 Background jobs triggered by `startExecution` may throw errors. Unlike the `waitForCompletion` case, the caller has no reference to the corresponding job promise which executes in the background.
 
@@ -318,13 +312,13 @@ Mitigating backpressure is primarily associated with the `startExecution` method
 
 For instance, consider a situation where 1K concurrently executing route handlers are each awaiting the completion of their own `waitForCompletion` execution, while the semaphore is unavailable. In such cases, all handlers will internally wait on the semaphore's `_availableSlotExists` private property, competing to acquire the semaphore once it becomes available.
 
-## Naming Convention
+## Naming Convention :memo:
 
 To improve readability and maintainability, it is highly recommended to assign a use-case-specific name to your semaphore instances. This practice helps in clearly identifying the purpose of each semaphore in the codebase. Examples include:
 - dbAccessSemaphore
 - tokenGenerationSemaphore
 - azureStorageSemaphore
 
-## License
+## License :scroll:
 
 [MIT](LICENSE)
