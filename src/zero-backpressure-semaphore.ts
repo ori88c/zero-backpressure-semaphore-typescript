@@ -137,9 +137,9 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * `extractUncaughtError` method. Users are encouraged to specify a custom `UncaughtErrorType`
      * generic parameter to the class if jobs may throw errors.
      * 
-     * @param job - The job to be executed once the semaphore is available.
+     * @param backgroundJob - The job to be executed once the semaphore is available.
      * @returns A promise that resolves when the job starts execution.
-     */	
+     */
     public async startExecution(backgroundJob: SemaphoreJob<T>): Promise<void> {
         const availableSlot = await this._getAvailableSlot();
         this._slots[availableSlot] = this._handleJobExecution(backgroundJob, availableSlot, true);
@@ -300,7 +300,8 @@ export class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
                 throw err;
             }
 
-            // Triggered by `startExecution`: A background job.
+            // Triggered by `startExecution`:
+            // A background job, the caller does not await for its return value to proceed.
             this._uncaughtErrors.push(err);
         } finally {
             this._slots[allottedSlot] = undefined;

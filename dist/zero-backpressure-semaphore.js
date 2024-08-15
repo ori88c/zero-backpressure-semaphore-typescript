@@ -113,7 +113,7 @@ class ZeroBackpressureSemaphore {
      * `extractUncaughtError` method. Users are encouraged to specify a custom `UncaughtErrorType`
      * generic parameter to the class if jobs may throw errors.
      *
-     * @param job - The job to be executed once the semaphore is available.
+     * @param backgroundJob - The job to be executed once the semaphore is available.
      * @returns A promise that resolves when the job starts execution.
      */
     async startExecution(backgroundJob) {
@@ -261,7 +261,8 @@ class ZeroBackpressureSemaphore {
                 // Caller is awaiting either fulfillment or rejection.
                 throw err;
             }
-            // Triggered by `startExecution`: A background job.
+            // Triggered by `startExecution`:
+            // A background job, the caller does not await for its return value to proceed.
             this._uncaughtErrors.push(err);
         }
         finally {

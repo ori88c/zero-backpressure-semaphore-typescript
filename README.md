@@ -1,4 +1,4 @@
-<h2 align="middle">Zero Backpressure Semaphore Typescript</h2>
+<h3 align="middle">Zero Backpressure Semaphore Typescript</h2>
 
 The `ZeroBackpressureSemaphore` class implements a semaphore for Node.js projects, allowing users to limit the number of concurrently executing jobs.  
 This implementation does not queue pending jobs, thereby eliminating backpressure. As a result, users have better control over memory footprint, which enhances performance by reducing garbage-collector overhead.
@@ -30,15 +30,7 @@ In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away
 
 Method names are chosen to clearly convey their functionality.
 
-## Breaking Change in Version 3.0.0
-
-In version 3.0.0, the target compatibility has been upgraded from ES6 to ES2020. This change was made to leverage the widespread adoption of ES2020, its native support for async/await, and the use of `Promise.allSettled` within the semaphore.
-
-## Breaking Change in Version 2.0.0
-
-The only breaking change in this release is the renaming of the method `waitTillAllExecutingJobsAreSettled` to `waitForAllExecutingJobsToComplete` for improved readability. No other changes have been introduced.
-
-## 1st use-case: Multiple Jobs Execution
+## 1st use-case: Multiple Jobs Execution :man_technologist:
 
 This semaphore variant excels in eliminating backpressure when dispatching multiple concurrent jobs from the same caller. This pattern is typically observed in **background job services**, such as:
 - Log File analysis.
@@ -246,7 +238,7 @@ On the other hand, given that the timeout is 30 seconds and a typical job durati
 
 As a general rule, `waitForAvailability` is advisable whenever a timeout mechanism is involved, and the timeout period begins **before** the job starts execution. Note that the same effect can be achieved with `startExecution` alone, if the timeout-triggering logic is included in the job itself (such as, consuming a message). Both approaches are valid.
 
-## 2nd use-case: Single Job Execution
+## 2nd use-case: Single Job Execution :man_technologist:
 
 The `waitForCompletion` method is useful for executing a sub-procedure, for which the caller must wait before proceeding with its work.
 
@@ -318,6 +310,14 @@ To improve readability and maintainability, it is highly recommended to assign a
 - dbAccessSemaphore
 - tokenGenerationSemaphore
 - azureStorageSemaphore
+
+## Breaking Change in Version 3.0.0 :boom:
+
+In version 3.0.0, the target compatibility has been upgraded from ES6 to ES2020. This change was made to leverage the widespread adoption of ES2020, its native support for async/await, and the use of `Promise.allSettled` within the semaphore.
+
+## Breaking Change in Version 2.0.0 :boom:
+
+The only breaking change in this release is the renaming of the method `waitTillAllExecutingJobsAreSettled` to `waitForAllExecutingJobsToComplete` for improved readability. No other changes have been introduced.
 
 ## License :scroll:
 
