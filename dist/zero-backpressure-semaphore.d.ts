@@ -80,14 +80,21 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     /**
      * startExecution
      *
-     * This method resolves once the given job has started its execution, indicating that the
+     * This method resolves once the given job has *started* its execution, indicating that the
      * semaphore has become available (i.e., allotted a slot for the job).
-     * Users can leverage this to determine the start timestamp of a job. If the semaphore is too busy
-     * to start a given job `X`, there is no reason to create another job `Y` until `X` has started.
+     * Users can leverage this to prevent backpressure of pending jobs:
+     * If the semaphore is too busy to start a given job `X`, there is no reason to create another
+     * job `Y` until `X` has started.
      *
      * This method is particularly useful for executing multiple or background jobs, where no return
-     * value is expected.
+     * value is expected. It promotes a just-in-time approach, on which each job is pending execution
+     * only when no other job is, thereby eliminating backpressure and reducing memory footprint.
      *
+     * ### Graceful Termination
+     * Method `waitForAllExecutingJobsToComplete` complements the typical use-cases of `startExecution`.
+     * It can be used to perform post-processing, after all the currently-executing jobs have completed.
+     *
+     * ### Error Handling
      * If the job throws an error, it is captured by the semaphore and can be accessed via the
      * `extractUncaughtError` method. Users are encouraged to specify a custom `UncaughtErrorType`
      * generic parameter to the class if jobs may throw errors.
@@ -100,11 +107,11 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * waitForCompletion
      *
      * This method executes the given job in a controlled manner, once the semaphore is available.
-     * It resolves or rejects when the job has finished its execution, providing the returned value
-     * or thrown error from the job.
+     * It resolves or rejects when the job finishes execution, returning the job's value or propagating
+     * any error it may throw.
      *
-     * This method is useful when the flow depends on the job's execution, such as needing its return
-     * value or handling any errors it may throw.
+     * This method is useful when the flow depends on a job's execution to proceed, such as needing
+     * its return value or handling any errors it may throw.
      *
      * ### Example Use Case
      * Suppose you have a route handler that needs to perform a specific code block with limited

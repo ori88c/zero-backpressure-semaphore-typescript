@@ -1,4 +1,4 @@
-<h3 align="middle">Zero Backpressure Semaphore Typescript</h2>
+<h2 align="middle">Zero Backpressure Semaphore Typescript</h2>
 
 The `ZeroBackpressureSemaphore` class implements a semaphore for Node.js projects, allowing users to limit the number of concurrently executing jobs.  
 This implementation does not queue pending jobs, thereby eliminating backpressure. As a result, users have better control over memory footprint, which enhances performance by reducing garbage-collector overhead.
@@ -13,8 +13,8 @@ Each use case necessitates distinct handling capabilities, which will be discuss
 
 - __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked. Without backpressure control, the heap can become overloaded, resulting in space complexity of O(*semaphore-slots* + *pending-jobs*) instead of O(*semaphore-slots*).
 - __Graceful Termination__: Await the completion of all currently executing jobs via the `waitForAllExecutingJobsToComplete` method.
-- __High Efficiency__: All state-altering operations have a constant time complexity, O(1).
-- __Comprehensive documentation__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
+- __High Efficiency :gear:__: All state-altering operations have a constant time complexity, O(1).
+- __Comprehensive documentation :books:__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
 - __Robust Error Handling__: Uncaught errors from background jobs triggered by `startExecution` are captured and can be accessed using the `extractUncaughtErrors` method.
 - **Fully covered** by rigorous unit tests.
 - Self-explanatory method names.
