@@ -1,7 +1,9 @@
 <h2 align="middle">Zero Backpressure Semaphore Typescript</h2>
 
 The `ZeroBackpressureSemaphore` class implements a semaphore for Node.js projects, allowing users to limit the number of concurrently executing jobs.  
-This implementation does not queue pending jobs, thereby eliminating backpressure. As a result, users have better control over memory footprint, which enhances performance by reducing garbage-collector overhead.
+This implementation does not queue pending jobs. Conversly, it promote a **just-in-time** approach, thereby eliminating backpressure. As a result, users have better control over memory footprint, which enhances performance by reducing garbage-collector overhead.
+
+To illustrate the benefits of backpressure prevention, consider a scenario where messages from a message broker, such as RabbitMQ or Kafka, are translated into jobs. For example, in a stock-exchange broker system, each message might contain a username, and each job processes all pending buy/sell requests for that user. If consumers using a semaphore pull messages too quickly, messages may accumulate for extended periods, potentially triggering the broker's TTL (Time to Live).
 
 The design addresses the two primary semaphore use cases in Node.js:
 * __Multiple Jobs Execution__: This use case involves a single caller dispatching multiple jobs, often serving as the sole owner of the semaphore instance.

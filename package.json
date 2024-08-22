@@ -1,7 +1,7 @@
 {
   "name": "zero-backpressure-semaphore-typescript",
-  "version": "3.0.3",
-  "description": "A classic semaphore with modern API, inspired by the RAII idiom. Offering backpressure control for enhanced efficiency, utilizing a communicative API that signals availability. Additionally, it incorporates mechanisms for graceful termination and error handling, making it suitable for complex scenarios.",
+  "version": "3.0.4",
+  "description": "A modern Promise-semaphore for Node.js projects, enabling users to limit the number of concurrently executing promises. Offering backpressure control for enhanced efficiency, utilizing a communicative API that signals availability, promoting a just-in-time approach. Additionally, it incorporates mechanisms for graceful termination and error handling, making it suitable for complex scenarios.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ori88c/zero-backpressure-semaphore-typescript.git"
@@ -32,14 +32,15 @@
     "promise-limiter",
     "promise-semaphore",
     "promise-pool",
-    "tasks-semaphore",
-    "tasks-pool",
+    "task-semaphore",
+    "task-pool",
     "scheduler",
     "executor",
     "uncaught-error",
     "uncaught-rejection",
     "async",
     "nodejs",
+    "Node.js",
     "typescript",
     "ts",
     "ES2020"
