@@ -306,6 +306,13 @@ Mitigating backpressure is primarily associated with the `startExecution` method
 
 For instance, consider a situation where 1K concurrently executing route handlers are each awaiting the completion of their own `waitForCompletion` execution, while the semaphore is unavailable. In such cases, all handlers will internally wait on the semaphore's `_availableSlotExists` private property, competing to acquire the semaphore once it becomes available.
 
+## Promise Semaphores Are Not Promise Pools
+
+The term "promise pool" is commonly used in the JavaScript community to describe promise semaphores.  
+However, this terminology can be misleading. The term "pool" typically implies the **reuse of resources**, as in "thread pools" or "connection pools," where a fixed set of resources is used and **recycled**. In contrast, a promise semaphore’s primary goal is to **control concurrency** by limiting the number of jobs executing concurrently, with each job represented by a **distinct promise instance**.
+
+Using the term "promise pool" may cause confusion, as it suggests resource reuse rather than concurrency management.
+
 ## Naming Convention :memo:
 
 To improve readability and maintainability, it is highly recommended to assign a use-case-specific name to your semaphore instances. This practice helps in clearly identifying the purpose of each semaphore in the codebase. Examples include:
