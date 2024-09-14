@@ -12,98 +12,105 @@ const resolveFast = async () => {
 };
 describe('ZeroBackpressureSemaphore tests', () => {
     describe('Happy path tests', () => {
-        test('waitForCompletion: should process only one job at a time, when jobs happen to be scheduled sequentially (trivial case)', async () => {
+        test('waitForCompletion: should process only one job at a time, ' +
+            'when jobs happen to be scheduled sequentially (trivial case)', async () => {
             const maxConcurrentJobs = 7;
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
             let completeCurrentJob;
             const numberOfJobs = 10;
-            for (let jobNo = 1; jobNo <= numberOfJobs; ++jobNo) {
+            for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
                 expect(semaphore.isAvailable).toBeTruthy();
                 expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
                 expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
                 const jobPromise = new Promise(res => completeCurrentJob = res);
                 const job = () => jobPromise;
-                const waitTillCompletionPromise = semaphore.waitForCompletion(job);
-                await resolveFast();
+                const waitForCompletionPromise = semaphore.waitForCompletion(job);
+                await Promise.race([waitForCompletionPromise, resolveFast()]);
                 expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(1);
+                // Trigger the completion of the current job.
                 completeCurrentJob();
-                await waitTillCompletionPromise;
+                await waitForCompletionPromise;
             }
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
         });
-        test('waitForCompletion: should process only one job at a time, when max concurrency is 1 and jobs are scheduled concurrently', async () => {
+        test('waitForCompletion: should process only one job at a time, ' +
+            'when max concurrency is 1 and jobs are scheduled concurrently', async () => {
             const maxConcurrentJobs = 1;
             const lock = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
             const numberOfJobs = 10;
             const jobCompletionCallbacks = [];
-            const waitTillCompletionPromises = [];
-            for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
-                const jobPromise = new Promise(res => jobCompletionCallbacks[jobNo] = res);
+            const waitForCompletionPromises = [];
+            // Create a burst of jobs, inducing backpressure on the semaphore.
+            for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
+                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
                 const job = () => jobPromise;
-                // Jobs will be executed in the order on which they were registered.
-                const waitCompletionPromise = lock.waitForCompletion(job);
-                waitTillCompletionPromises.push(waitCompletionPromise);
+                // Jobs will be executed in the order in which they were registered.
+                waitForCompletionPromises.push(lock.waitForCompletion(job));
+                // Trigger the event loop to allow the semaphore to evaluate if the current job can begin execution.
+                // Based on this test's configuration, only the first job will be allowed to start.
+                await Promise.race([
+                    waitForCompletionPromises[waitForCompletionPromises.length - 1],
+                    resolveFast()
+                ]);
             }
-            for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
-                // Just trigger the event loop.
-                await Promise.race([...waitTillCompletionPromises, resolveFast()]);
-                // At this stage, all jobs are pending for execution, except one which has started its execution.
-                // At this stage, jobNo has started its execution.
-                expect(lock.isAvailable).toBeFalsy();
+            for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
+                // At this stage, all jobs are pending for execution, except one which has started.
+                // At this stage, the ithJob has started its execution.
+                expect(lock.isAvailable).toBe(false);
                 expect(lock.amountOfCurrentlyExecutingJobs).toBe(1);
                 expect(lock.maxConcurrentJobs).toBe(maxConcurrentJobs);
-                // Finish current job.
-                // Note: the order on which jobs will be executed, is the order on which we
-                // invoke lock.waitTillCompletion.
-                const finishCurrentJob = jobCompletionCallbacks[0];
+                // Complete the current job.
+                // Note: the order in which jobs start execution corresponds to the order in which
+                // `waitForCompletion` was invoked.
+                const finishCurrentJob = jobCompletionCallbacks[ithJob];
                 expect(finishCurrentJob).toBeDefined();
                 finishCurrentJob();
-                await waitTillCompletionPromises[0];
-                // Evict the just-completed job.
-                waitTillCompletionPromises.shift();
-                jobCompletionCallbacks.shift();
+                await waitForCompletionPromises[ithJob];
             }
-            expect(lock.isAvailable).toBeTruthy();
+            expect(lock.isAvailable).toBe(true);
             expect(lock.amountOfCurrentlyExecutingJobs).toBe(0);
             expect(lock.maxConcurrentJobs).toBe(maxConcurrentJobs);
             expect(lock.amountOfUncaughtErrors).toBe(0);
         });
-        test('waitForCompletion: should not exceed max concurrently executing jobs, when the amont of pending jobs is bigger than the amount of slots', async () => {
+        test('waitForCompletion: should not exceed max concurrently executing jobs, ' +
+            'when the amont of pending jobs is bigger than the amount of slots', async () => {
             const maxConcurrentJobs = 5;
             const numberOfJobs = 17 * maxConcurrentJobs - 1;
             const jobCompletionCallbacks = [];
-            const waitTillCompletionPromises = [];
+            const waitForCompletionPromises = [];
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
-            for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
-                const jobPromise = new Promise(res => jobCompletionCallbacks[jobNo] = res);
+            // Create a burst of jobs, inducing backpressure on the semaphore.
+            for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
+                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
                 const job = () => jobPromise;
-                // Jobs will be executed in the order on which they were registered.
-                const waitPromise = semaphore.waitForCompletion(job);
-                waitTillCompletionPromises.push(waitPromise);
+                // Jobs will be executed in the order in which they were registered.
+                waitForCompletionPromises.push(semaphore.waitForCompletion(job));
+                // Triggering the event loop, allowing the semaphore to decide which jobs can
+                // start their execution. Based on this test's configuration, only the first
+                // `maxConcurrentJobs` jobs will be allowed to start.
+                await Promise.race([
+                    waitForCompletionPromises[waitForCompletionPromises.length - 1],
+                    resolveFast()
+                ]);
             }
-            for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
-                // Triggering the event loop, allowing the Semaphore to decide which jobs can
-                // start their execution.
-                await Promise.race([...waitTillCompletionPromises, resolveFast()]);
-                // At this stage, jobs [jobNo, min(maxConcurrentJobs, jobNo + maxConcurrentJobs - 1)] are executing.
-                const remainedJobs = numberOfJobs - jobNo;
+            for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
+                // At this stage, jobs [ithJob, min(maxConcurrentJobs, ithJob + maxConcurrentJobs - 1)] are executing.
+                const remainedJobs = numberOfJobs - ithJob;
                 const isAvailable = remainedJobs < maxConcurrentJobs;
                 const amountOfCurrentlyExecutingJobs = isAvailable ? remainedJobs : maxConcurrentJobs;
                 expect(semaphore.isAvailable).toBe(isAvailable);
                 expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(amountOfCurrentlyExecutingJobs);
                 expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
-                // Finish current job.
-                // Note: the order on which jobs will be executed, is the order on which we
-                // invoke lock.waitTillCompletion.
-                const finishCurrentJob = jobCompletionCallbacks[0];
+                // Complete the current job.
+                // Note: the order in which jobs start execution corresponds to the order in which
+                // `waitForCompletion` was invoked.
+                const finishCurrentJob = jobCompletionCallbacks[ithJob];
                 expect(finishCurrentJob).toBeDefined();
                 finishCurrentJob();
-                await waitTillCompletionPromises[0];
-                waitTillCompletionPromises.shift();
-                jobCompletionCallbacks.shift();
+                await waitForCompletionPromises[ithJob];
             }
-            expect(semaphore.isAvailable).toBeTruthy();
+            expect(semaphore.isAvailable).toBe(true);
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
             expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
@@ -120,47 +127,109 @@ describe('ZeroBackpressureSemaphore tests', () => {
         test('waitForCompletion: should return the expected error when throws', async () => {
             const maxConcurrentJobs = 3;
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
-            const expectedThrownError = new Error("got one less, one less");
+            const expectedThrownError = new Error('mock error');
             const job = () => Promise.reject(expectedThrownError);
             try {
                 await semaphore.waitForCompletion(job);
-                expect(true).toBe(false); // Necessarily fails, as it shouldn't reach here.
+                expect(true).toBe(false); // The flow should not reach this point.
             }
             catch (actualThrownError) {
                 expect(actualThrownError).toBe(expectedThrownError);
+                expect(actualThrownError.message).toEqual(expectedThrownError.message);
             }
             // The semaphore stores uncaught errors only for background jobs triggered by
             // `startExecution`.
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
         });
-        test('waitForAllExecutingJobsToComplete: should resolve once all executing jobs are completed', async () => {
-            const maxConcurrentJobs = 12;
+        test('waitForAllExecutingJobsToComplete should resolve once all executing jobs have completed: ' +
+            'Jobs are resolved in FIFO order in this test', async () => {
+            const maxConcurrentJobs = 56;
             const jobCompletionCallbacks = [];
-            const waitTillCompletionPromises = [];
+            const waitForCompletionPromises = [];
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
-            for (let jobNo = 0; jobNo < maxConcurrentJobs; ++jobNo) {
-                const jobPromise = new Promise(res => jobCompletionCallbacks[jobNo] = res);
+            for (let ithJob = 0; ithJob < maxConcurrentJobs; ++ithJob) {
+                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
                 const job = () => jobPromise;
-                // Jobs will be executed in the order on which they were registered.
-                const waitPromise = semaphore.waitForCompletion(job);
-                waitTillCompletionPromises.push(waitPromise);
+                // Jobs will be executed in the order in which they were registered.
+                waitForCompletionPromises.push(semaphore.waitForCompletion(job));
+                // Trigger the event loop.
+                await Promise.race([
+                    waitForCompletionPromises[waitForCompletionPromises.length - 1],
+                    resolveFast()
+                ]);
             }
-            const waitForAllExecutingJobsToCompletePromise = semaphore.waitForAllExecutingJobsToComplete();
-            await resolveFast(); // Trigger the event loop.
+            // At this point, the semaphore should be fully utilized.
+            expect(semaphore.isAvailable).toBe(false);
+            let allJobsCompleted = false;
+            const waitForAllExecutingJobsToCompletePromise = (async () => {
+                await semaphore.waitForAllExecutingJobsToComplete();
+                allJobsCompleted = true;
+            })();
+            // Trigger the event loop to verify that allJobsCompleted remains false.
+            await Promise.race([waitForAllExecutingJobsToCompletePromise, resolveFast()]);
             // Resolve jobs one by one.
-            for (let jobNo = 0; jobNo < maxConcurrentJobs; ++jobNo) {
+            for (let ithJob = 0; ithJob < maxConcurrentJobs; ++ithJob) {
                 // Before resolving.
-                expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs - jobNo);
+                expect(allJobsCompleted).toBe(false);
+                expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs - ithJob);
                 // Resolve one job.
-                jobCompletionCallbacks[jobNo]();
-                await Promise.race(waitTillCompletionPromises);
+                jobCompletionCallbacks[ithJob]();
+                await waitForCompletionPromises[ithJob];
                 // After resolving.
-                expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs - jobNo - 1);
+                expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs - ithJob - 1);
                 expect(semaphore.isAvailable).toBe(true);
-                waitTillCompletionPromises.shift();
             }
-            expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
             await waitForAllExecutingJobsToCompletePromise;
+            expect(allJobsCompleted).toBe(true);
+            expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
+            expect(semaphore.amountOfUncaughtErrors).toBe(0);
+        });
+        test('waitForAllExecutingJobsToComplete should resolve once all executing jobs have completed: ' +
+            'Jobs are resolved in FILO order in this test', async () => {
+            // FILO order for job completion times is less likely in real life, but it’s a good edge case to test.
+            // It ensures the semaphore can maintain a reference to an old job, even if its execution time exceeds
+            // all others.
+            const maxConcurrentJobs = 47;
+            const jobCompletionCallbacks = [];
+            const waitForCompletionPromises = [];
+            const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
+            for (let ithJob = 0; ithJob < maxConcurrentJobs; ++ithJob) {
+                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
+                const job = () => jobPromise;
+                // Jobs will be executed in the order in which they were registered.
+                waitForCompletionPromises.push(semaphore.waitForCompletion(job));
+                // Trigger the event loop.
+                await Promise.race([
+                    waitForCompletionPromises[waitForCompletionPromises.length - 1],
+                    resolveFast()
+                ]);
+            }
+            // At this point, the semaphore should be fully utilized.
+            expect(semaphore.isAvailable).toBe(false);
+            let allJobsCompleted = false;
+            const waitForAllExecutingJobsToCompletePromise = (async () => {
+                await semaphore.waitForAllExecutingJobsToComplete();
+                allJobsCompleted = true;
+            })();
+            // Trigger the event loop to verify that allJobsCompleted remains false.
+            await Promise.race([waitForAllExecutingJobsToCompletePromise, resolveFast()]);
+            // Resolve jobs one by one.
+            let expectedAmountOfCurrentlyExecutingJobs = maxConcurrentJobs;
+            for (let ithJob = maxConcurrentJobs - 1; ithJob >= 0; --ithJob) {
+                // Before resolving.
+                expect(allJobsCompleted).toBe(false);
+                expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(expectedAmountOfCurrentlyExecutingJobs);
+                // Resolve one job.
+                jobCompletionCallbacks.pop()();
+                await waitForCompletionPromises.pop();
+                --expectedAmountOfCurrentlyExecutingJobs;
+                // After resolving.
+                expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(expectedAmountOfCurrentlyExecutingJobs);
+                expect(semaphore.isAvailable).toBe(true);
+            }
+            await waitForAllExecutingJobsToCompletePromise;
+            expect(allJobsCompleted).toBe(true);
+            expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
         });
         test('startExecution: background jobs should not exceed the max given concurrency', async () => {
@@ -168,52 +237,53 @@ describe('ZeroBackpressureSemaphore tests', () => {
             const numberOfJobs = 6 * maxConcurrentJobs - 1;
             const jobCompletionCallbacks = [];
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
-            // Each main iteration starts execution of the current jobNo, and completes the
-            // (jobNo - maxNumberOfConcurrentJobs)th job if exist, to make an available room for
-            // the just-added one.
+            // Each main iteration starts execution of the current ithJob, and completes the
+            // (ithJob - maxConcurrentJobs)th job if it exists, to free up a slot for the newly added job.
             // To validate complex scenarios, even-numbered jobs will succeed while odd-numbered jobs
             // will throw exceptions. From the semaphore's perspective, a completed job should release
-            // its associated room, regardless of whether it completed successfully or failed.
+            // its associated slot, regardless of whether it completed successfully or failed.
             let numberOfFailedJobs = 0;
-            for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
-                const shouldJobSucceed = jobNo % 2 === 0;
+            for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
+                const shouldJobSucceed = ithJob % 2 === 0;
                 if (!shouldJobSucceed) {
                     ++numberOfFailedJobs;
                 }
-                const jobPromise = new Promise((res, rej) => jobCompletionCallbacks[jobNo] = shouldJobSucceed ?
+                const jobPromise = new Promise((res, rej) => jobCompletionCallbacks[ithJob] = shouldJobSucceed ?
                     () => res() :
-                    () => rej(new Error("Why bad things happen to good semaphores?")));
+                    () => rej(new Error('Why bad things happen to good semaphores?')));
                 const job = () => jobPromise;
-                // Jobs will be executed in the order on which they were registered.
-                const waitTillExecutionStartsPromise = semaphore.startExecution(job);
-                if (jobNo < maxConcurrentJobs) {
+                // Jobs will be executed in the order in which they were registered.
+                const waitUntilExecutionStartsPromise = semaphore.startExecution(job);
+                if (ithJob < maxConcurrentJobs) {
                     // Should start immediately.
-                    await waitTillExecutionStartsPromise;
-                    expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(jobNo + 1);
+                    await waitUntilExecutionStartsPromise;
+                    expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(ithJob + 1);
                     expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
                     continue;
                 }
-                // At this stage, jobs [jobNo - maxConcurrentJobs, jobNo - 1] are executing, whilst jobNo
-                // cannot start yet (none of the currently executing ones has resulted yet).
+                // At this stage, jobs [ithJob - maxConcurrentJobs, jobNo - 1] are executing,
+                // while the ithJob cannot start yet (none of the currently executing ones has completed).
                 expect(semaphore.isAvailable).toBe(false);
                 expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs);
                 expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
-                // Finish oldest job (began executing first, among the currently executing ones).
-                const completeOldestJob = jobCompletionCallbacks[jobNo - maxConcurrentJobs];
+                // Complete the oldest job (the first to begin execution among the currently running jobs),
+                // to free up an execution slot.
+                const completeOldestJob = jobCompletionCallbacks[ithJob - maxConcurrentJobs];
                 expect(completeOldestJob).toBeDefined();
                 completeOldestJob();
-                // Wait until jobNo starts executing, after ensuring an available slot for it.
-                await waitTillExecutionStartsPromise;
+                // After ensuring there is an available slot for the current job, wait until
+                // it starts execution.
+                await waitUntilExecutionStartsPromise;
             }
-            // Completing the remained "tail" of still-executing jobs:
-            // Each main loop completes the current job.
+            // Completing the remaining "tail" of still-executing jobs:
+            // Each iteration of the main loop completes the current job.
             const remainedJobsSuffixStart = numberOfJobs - maxConcurrentJobs;
             let expectedAmountOfCurrentlyExecutingJobs = maxConcurrentJobs;
-            for (let jobNo = remainedJobsSuffixStart; jobNo < numberOfJobs; ++jobNo) {
-                const completeCurrentJob = jobCompletionCallbacks[jobNo];
+            for (let ithJob = remainedJobsSuffixStart; ithJob < numberOfJobs; ++ithJob) {
+                const completeCurrentJob = jobCompletionCallbacks[ithJob];
                 expect(completeCurrentJob).toBeDefined();
                 completeCurrentJob();
-                // Just trigger the event loop.
+                // Trigger the event loop.
                 await resolveFast();
                 --expectedAmountOfCurrentlyExecutingJobs;
                 expect(semaphore.isAvailable).toBe(true);
@@ -228,9 +298,9 @@ describe('ZeroBackpressureSemaphore tests', () => {
             const maxConcurrentJobs = 11;
             const jobCompletionCallbacks = [];
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
-            for (let jobNo = 0; jobNo < maxConcurrentJobs; ++jobNo) {
+            for (let ithJob = 0; ithJob < maxConcurrentJobs; ++ithJob) {
                 expect(semaphore.isAvailable).toBe(true);
-                const jobPromise = new Promise(res => jobCompletionCallbacks[jobNo] = res);
+                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
                 await semaphore.startExecution(() => jobPromise); // Should resolve immediately.
             }
             expect(semaphore.isAvailable).toBe(false);
@@ -240,7 +310,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 finishedWaitingForAvailability = true;
             })();
             // Perform some event loop iterations, without resolving any ongoing semaphore job.
-            // We expect waitForAvailabilityPromise to not be resolved.
+            // We expect `waitForAvailabilityPromise` to not be resolved.
             const numberOfEventLoopIterationsWithoutExpectedChange = 197;
             for (let eventLoopIteration = 0; eventLoopIteration < numberOfEventLoopIterationsWithoutExpectedChange; ++eventLoopIteration) {
                 await Promise.race([waitForAvailabilityPromise, resolveFast()]);
@@ -298,9 +368,9 @@ describe('ZeroBackpressureSemaphore tests', () => {
             };
             const expectedExecutionOrder = [];
             const awaiterPromises = [];
-            for (let i = 0; i < numberOfAwaiters; ++i) {
-                expectedExecutionOrder.push(i);
-                awaiterPromises.push(awaiterAskingForSlot(i));
+            for (let awaiterID = 0; awaiterID < numberOfAwaiters; ++awaiterID) {
+                expectedExecutionOrder.push(awaiterID);
+                awaiterPromises.push(awaiterAskingForSlot(awaiterID));
             }
             // Initially, no awaiter should be able to make progress.
             await Promise.race([...awaiterPromises, resolveFast()]);
@@ -328,11 +398,11 @@ describe('ZeroBackpressureSemaphore tests', () => {
             const numberOfJobs = maxConcurrentJobs + 18;
             const jobErrors = [];
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
-            for (let jobNo = 0; jobNo < numberOfJobs; ++jobNo) {
+            for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
                 const error = {
-                    name: "CustomJobError",
-                    message: `Job no. ${jobNo} has failed`,
-                    jobID: jobNo
+                    name: 'CustomJobError',
+                    message: `Job no. ${ithJob} has failed`,
+                    jobID: ithJob
                 };
                 jobErrors.push(error);
                 await semaphore.startExecution(async () => { throw error; });
