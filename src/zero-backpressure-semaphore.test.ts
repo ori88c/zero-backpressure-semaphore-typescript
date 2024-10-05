@@ -218,7 +218,10 @@ describe('ZeroBackpressureSemaphore tests', () => {
           
         // Resolve one job.
         jobCompletionCallbacks[ithJob]();
-        await waitForCompletionPromises[ithJob];
+        await Promise.race([
+          waitForAllExecutingJobsToCompletePromise,
+          waitForCompletionPromises[ithJob] // Always wins the race, except potentially in the last iteration.
+        ]);
 
         // After resolving.
         expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs - ithJob - 1);
@@ -277,7 +280,10 @@ describe('ZeroBackpressureSemaphore tests', () => {
           
         // Resolve one job.
         jobCompletionCallbacks.pop()();
-        await waitForCompletionPromises.pop();
+        await Promise.race([
+          waitForAllExecutingJobsToCompletePromise,
+          waitForCompletionPromises.pop() // Always wins the race, except potentially in the last iteration.
+        ]);
         --expectedAmountOfCurrentlyExecutingJobs;
 
         // After resolving.
