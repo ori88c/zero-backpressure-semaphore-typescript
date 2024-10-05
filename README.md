@@ -1,4 +1,4 @@
-<h2 align="middle">Zero Backpressure Semaphore Typescript</h2>
+<h2 align="middle"><span style="color:#4f979f">Zer</span><span style="color:#547e87">o Ba</span><span style="color:#677b8b">kpr</span><span style="color:#7f91a0">ess</span><span style="color:#94a6a2">ure </span><span style="color:#779a92">Sem</span><span style="color:#64958a">aph</span><span style="color:#539b8c">ore </span><span style="color:#57a7a8">Typ</span><span style="color:#5fabbf">esc</span><span style="color:#6dafd0">rip</span><span style="color:#5e92ab">t</span></h2>
 
 The `ZeroBackpressureSemaphore` class implements a semaphore for Node.js projects, allowing users to limit the number of concurrently executing jobs.  
 This implementation does not queue pending jobs. Conversly, it promote a **just-in-time** approach, thereby eliminating backpressure. As a result, users have better control over memory footprint, which enhances performance by reducing garbage-collector overhead.
@@ -18,7 +18,8 @@ Each use case necessitates distinct handling capabilities, which will be discuss
 - __High Efficiency :gear:__: All state-altering operations have a constant time complexity, O(1).
 - __Comprehensive documentation :books:__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
 - __Robust Error Handling__: Uncaught errors from background jobs triggered by `startExecution` are captured and can be accessed using the `extractUncaughtErrors` method.
-- **Fully covered** by rigorous unit tests.
+- __Metrics :bar_chart:__: The class offers various metrics through getter methods, providing insights into the semaphore's current state.
+- __Tests :test_tube:__: Fully covered by rigorous unit tests.
 - Self-explanatory method names.
 - No external runtime dependencies: Only development dependencies are used.
 - ES2020 Compatibility: The `tsconfig` target is set to ES2020, ensuring compatibility with ES2020 environments.
@@ -31,6 +32,27 @@ Traditional semaphore APIs require explicit *acquire* and *release* steps, addin
 In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away these details and reducing user responsibility. The *acquire* and *release* steps are handled implicitly by the execution methods, reminiscent of the RAII idiom in C++.
 
 Method names are chosen to clearly convey their functionality.
+
+## API :globe_with_meridians:
+
+The `ZeroBackpressureSemaphore` class provides the following methods:
+
+* __startExecution__: Resolves once the given job has **started** its execution. Users can leverage this to prevent backpressure of pending jobs; If the semaphore is too busy to start a given job `X`, there is no reason to create another job `Y` until `X` has started. This method is particularly useful for background job workers that frequently retrieve job metadata from external sources, such as pulling messages from a message broker.
+* __waitForCompletion__: Executes the given job in a controlled manner, once there is an available slot. It resolves or rejects when the job **completes** execution, returning the job's value or propagating any error it may throw.
+* __waitForAllExecutingJobsToComplete__: Resolves when all **currently** executing jobs have finished, meaning once all running promises have either resolved or rejected. This is particularly useful in scenarios where you need to ensure that all jobs are completed before proceeding, such as during shutdown processes or between unit tests.
+* __waitForAvailability__: This method resolves once at least one slot is available for job execution. In other words, it resolves when the semaphore is available to trigger a new job immediately. Note that the same effect can be achieved with `startExecution` alone, if the async logic (intended to be delayed until availability) is handled within the job itself rather than as a preliminary step. Therefore, `waitForAvailability` serves as a design choice rather than a strict necessity.
+* __extractUncaughtErrors__: Returns an array of uncaught errors, captured by the semaphore while executing background jobs added by `startExecution`. The instance will no longer hold these error references once extracted. In other words, ownership of these uncaught errors shifts to the caller, while the semaphore clears its list of uncaught errors.
+
+If needed, refer to the code documentation for a more comprehensive description of each method.
+
+## Getter Methods :mag:
+
+The `ZeroBackpressureSemaphore` class provides the following getter methods to reflect the current semaphore's state:
+
+* __maxConcurrentJobs__: The maximum number of concurrent jobs as specified in the constructor. This value is set in the constructor and remains constant throughout the instance's lifespan.
+* __isAvailable__: Indicates whether there is an available job slot, meaning the semaphore can begin executing a new job immediately.
+* __amountOfCurrentlyExecutingJobs__: The number of jobs currently being executed by the semaphore.
+* __amountOfUncaughtErrors__: The number of uncaught errors from background jobs triggered by `startExecution`, that are currently stored by the instance. These errors have not yet been extracted using `extractUncaughtErrors`.
 
 ## 1st use-case: Multiple Jobs Execution :man_technologist:
 
@@ -61,8 +83,7 @@ const sensorAggregationSemaphore = new ZeroBackpressureSemaphore<void>(
 async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
   for (const uid of sensorUIDs) {
     // Until the semaphore can start aggregating data from the current sensor,
-    // it won't make sense to add more jobs, as such will induce unnecessary
-    // backpressure.
+    // adding more jobs won't make sense as this would induce unnecessary backpressure.
     await sensorAggregationSemaphore.startExecution(
       (): Promise<void> => handleDataAggregation(uid)
     );
@@ -102,8 +123,7 @@ const sensorAggregationSemaphore =
 async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
   for (const uid of sensorUIDs) {
     // Until the semaphore can start aggregating data from the current sensor,
-    // it won't make sense to add more jobs, as such will induce unnecessary
-    // backpressure.
+    // adding more jobs won't make sense as this would induce unnecessary backpressure.
     await sensorAggregationSemaphore.startExecution(
       (): Promise<void> => handleDataAggregation(uid)
     );
@@ -171,7 +191,7 @@ async function processConsumedMessages(): Promise<void> {
 
     const message = await mqClient.receiveOneMessage();
     if (!message) {
-      // Consider the queue as empty.
+      // Consider the queue as empty, for simplicity of this example.
       isQueueEmpty = true;
       return;
     }
@@ -216,7 +236,7 @@ async function processConsumedMessages(): Promise<void> {
     await sensorAggregationSemaphore.waitForAvailability();
     const message = await mqClient.receiveOneMessage();
     if (!message) {
-      // Consider the queue as empty.
+      // Consider the queue as empty, for simplicity of this example.
       break;
     }
 
