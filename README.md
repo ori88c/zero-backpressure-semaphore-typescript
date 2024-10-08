@@ -11,7 +11,24 @@ The design addresses the two primary semaphore use cases in Node.js:
 
 Each use case necessitates distinct handling capabilities, which will be discussed separately with accompanying examples.
 
-## Key Features :sparkles:
+## Table of Contents
+
+* [Key Features](#key-features)
+* [Modern API Design](#modern-api-design)
+* [API](#api)
+* [Getter Methods](#getter-methods)
+* [1st use-case: Multiple Jobs Execution](#first-use-case)
+* [2nd use-case: Single Job Execution](#second-use-case)
+* [Graceful Termination](#graceful-termination)
+* [Error Handling for Background Jobs](#error-handling)
+* [Unavoidable / Implicit Backpressure](#unavoidable-backpressure)
+* [Promise Semaphores Are Not Promise Pools](#not-promise-pool)
+* [Breaking Change in Version 3.0.0](#breaking-change-3)
+* [Breaking Change in Version 2.0.0](#breaking-change-2)
+* [Naming Convention](#naming-convention)
+* [License](#license)
+
+## Key Features :sparkles:<a id="key-features"></a>
 
 - __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked. Without backpressure control, the heap can become overloaded, resulting in space complexity of O(*semaphore-slots* + *pending-jobs*) instead of O(*semaphore-slots*).
 - __Graceful Termination__: Await the completion of all currently executing jobs via the `waitForAllExecutingJobsToComplete` method.
@@ -25,7 +42,7 @@ Each use case necessitates distinct handling capabilities, which will be discuss
 - ES2020 Compatibility: The `tsconfig` target is set to ES2020, ensuring compatibility with ES2020 environments.
 - TypeScript support.
 
-## Modern API Design :rocket:
+## Modern API Design :rocket:<a id="modern-api-design"></a>
 
 Traditional semaphore APIs require explicit *acquire* and *release* steps, adding overhead and responsibility for the user. Additionally, they introduce the risk of deadlocking the application if one forgets to *release*, for example, due to a thrown exception.
 
@@ -33,7 +50,7 @@ In contrast, `ZeroBackpressureSemaphore` manages job execution, abstracting away
 
 Method names are chosen to clearly convey their functionality.
 
-## API :globe_with_meridians:
+## API :globe_with_meridians:<a id="api"></a>
 
 The `ZeroBackpressureSemaphore` class provides the following methods:
 
@@ -45,7 +62,7 @@ The `ZeroBackpressureSemaphore` class provides the following methods:
 
 If needed, refer to the code documentation for a more comprehensive description of each method.
 
-## Getter Methods :mag:
+## Getter Methods :mag:<a id="getter-methods"></a>
 
 The `ZeroBackpressureSemaphore` class provides the following getter methods to reflect the current semaphore's state:
 
@@ -54,7 +71,9 @@ The `ZeroBackpressureSemaphore` class provides the following getter methods to r
 * __amountOfCurrentlyExecutingJobs__: The number of jobs currently being executed by the semaphore.
 * __amountOfUncaughtErrors__: The number of uncaught errors from background jobs triggered by `startExecution`, that are currently stored by the instance. These errors have not yet been extracted using `extractUncaughtErrors`.
 
-## 1st use-case: Multiple Jobs Execution :man_technologist:
+To eliminate any ambiguity, all getter methods have **O(1)** time and space complexity, meaning they do **not** iterate through all currently executing jobs with each call. The metrics are maintained by the jobs themselves.
+
+## 1st use-case: Multiple Jobs Execution :man_technologist:<a id="first-use-case"></a>
 
 This semaphore variant excels in eliminating backpressure when dispatching multiple concurrent jobs from the same caller. This pattern is typically observed in **background job services**, such as:
 - Log File analysis.
@@ -260,7 +279,7 @@ On the other hand, given that the timeout is 30 seconds and a typical job durati
 
 As a general rule, `waitForAvailability` is advisable whenever a timeout mechanism is involved, and the timeout period begins **before** the job starts execution. Note that the same effect can be achieved with `startExecution` alone, if the timeout-triggering logic is included in the job itself (such as, consuming a message). Both approaches are valid.
 
-## 2nd use-case: Single Job Execution :man_technologist:
+## 2nd use-case: Single Job Execution :man_technologist:<a id="second-use-case"></a>
 
 The `waitForCompletion` method is useful for executing a sub-procedure, for which the caller must wait before proceeding with its work.
 
@@ -295,7 +314,7 @@ app.get('/user/', async (req, res) => {
 });
 ```
 
-## Graceful Termination :hourglass:
+## Graceful Termination :hourglass:<a id="graceful-termination"></a>
 
 The `waitForAllExecutingJobsToComplete` method is essential for scenarios where it is necessary to wait for all ongoing jobs to finish, such as logging a success message or executing subsequent logic.
 
@@ -303,7 +322,7 @@ A key use case for this method is ensuring stable unit tests. Each test should s
 
 If your component has a termination method (`stop`, `terminate`, or similar), keep that in mind.
 
-## Error Handling for Background Jobs :warning:
+## Error Handling for Background Jobs :warning:<a id="error-handling"></a>
 
 Background jobs triggered by `startExecution` may throw errors. Unlike the `waitForCompletion` case, the caller has no reference to the corresponding job promise which executes in the background.
 
@@ -320,34 +339,34 @@ However, there are a few exceptional cases where the user can safely avoid extra
 - The number of jobs is relatively small and the process is short-lived.
 - The jobs never throw errors, thus no uncaught errors are possible.
 
-## Unavoidable / Implicit Backpressure
+## Unavoidable / Implicit Backpressure<a id="unavoidable-backpressure"></a>
 
 Mitigating backpressure is primarily associated with the `startExecution` method, particularly in scenarios involving multiple jobs. However, the single-job use case may certainly inflict backpressure on the Node.js micro-tasks queue.
 
 For instance, consider a situation where 1K concurrently executing route handlers are each awaiting the completion of their own `waitForCompletion` execution, while the semaphore is unavailable. In such cases, all handlers will internally wait on the semaphore's `_availableSlotExists` private property, competing to acquire the semaphore once it becomes available.
 
-## Promise Semaphores Are Not Promise Pools
+## Promise Semaphores Are Not Promise Pools<a id="not-promise-pool"></a>
 
 The term "promise pool" is commonly used in the JavaScript community to describe promise semaphores.  
 However, this terminology can be misleading. The term "pool" typically implies the **reuse of resources**, as in "thread pools" or "connection pools," where a fixed set of resources is used and **recycled**. In contrast, a promise semaphore’s primary goal is to **control concurrency** by limiting the number of jobs executing concurrently, with each job represented by a **distinct promise instance**.
 
 Using the term "promise pool" may cause confusion, as it suggests resource reuse rather than concurrency management.
 
-## Naming Convention :memo:
+## Breaking Change in Version 3.0.0 :boom:<a id="breaking-change-3"></a>
+
+In version 3.0.0, the target compatibility has been upgraded from ES6 to ES2020. This change was made to leverage the widespread adoption of ES2020, its native support for async/await, and the use of `Promise.allSettled` within the semaphore.
+
+## Breaking Change in Version 2.0.0 :boom:<a id="breaking-change-2"></a>
+
+The only breaking change in this release is the renaming of the method `waitTillAllExecutingJobsAreSettled` to `waitForAllExecutingJobsToComplete` for improved readability. No other changes have been introduced.
+
+## Naming Convention :memo:<a id="naming-convention"></a>
 
 To improve readability and maintainability, it is highly recommended to assign a use-case-specific name to your semaphore instances. This practice helps in clearly identifying the purpose of each semaphore in the codebase. Examples include:
 - dbAccessSemaphore
 - tokenGenerationSemaphore
 - azureStorageSemaphore
 
-## Breaking Change in Version 3.0.0 :boom:
-
-In version 3.0.0, the target compatibility has been upgraded from ES6 to ES2020. This change was made to leverage the widespread adoption of ES2020, its native support for async/await, and the use of `Promise.allSettled` within the semaphore.
-
-## Breaking Change in Version 2.0.0 :boom:
-
-The only breaking change in this release is the renaming of the method `waitTillAllExecutingJobsAreSettled` to `waitForAllExecutingJobsToComplete` for improved readability. No other changes have been introduced.
-
-## License :scroll:
+## License :scroll:<a id="license"></a>
 
 [MIT](LICENSE)
