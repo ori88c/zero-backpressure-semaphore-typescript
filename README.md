@@ -11,6 +11,8 @@ The design addresses the two primary semaphore use cases in Node.js:
 
 Each use case necessitates distinct handling capabilities, which will be discussed separately with accompanying examples.
 
+If your use case involves weighted jobs — where instead of limiting the maximum concurrency, you need to enforce a maximum total weight for concurrently executing jobs — consider using the weighted variant of this package: [zero-backpressure-weighted-promise-semaphore](https://www.npmjs.com/package/zero-backpressure-weighted-promise-semaphore).
+
 ## Table of Contents
 
 * [Key Features](#key-features)
@@ -35,7 +37,7 @@ Each use case necessitates distinct handling capabilities, which will be discuss
 - __High Efficiency :gear:__: All state-altering operations have a constant time complexity, O(1).
 - __Comprehensive documentation :books:__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
 - __Robust Error Handling__: Uncaught errors from background jobs triggered by `startExecution` are captured and can be accessed using the `extractUncaughtErrors` method.
-- __Metrics :bar_chart:__: The class offers various metrics through getter methods, providing insights into the semaphore's current state.
+- __Metrics :bar_chart:__: The class offers various metrics through getter methods, such as `amountOfCurrentlyExecutingJobs`, providing insights into the semaphore's current state. These metrics can be used for periodic logging or to collect statistics from real-world usage.
 - __Tests :test_tube:__: Fully covered by rigorous unit tests.
 - Self-explanatory method names.
 - No external runtime dependencies: Only development dependencies are used.
