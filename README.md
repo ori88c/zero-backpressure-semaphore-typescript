@@ -59,7 +59,7 @@ The `ZeroBackpressureSemaphore` class provides the following methods:
 * __startExecution__: Resolves once the given job has **started** its execution. Users can leverage this to prevent backpressure of pending jobs; If the semaphore is too busy to start a given job `X`, there is no reason to create another job `Y` until `X` has started. This method is particularly useful for background job workers that frequently retrieve job metadata from external sources, such as pulling messages from a message broker.
 * __waitForCompletion__: Executes the given job in a controlled manner, once there is an available slot. It resolves or rejects when the job **completes** execution, returning the job's value or propagating any error it may throw.
 * __waitForAllExecutingJobsToComplete__: Resolves when all **currently** executing jobs have finished, meaning once all running promises have either resolved or rejected. This is particularly useful in scenarios where you need to ensure that all jobs are completed before proceeding, such as during shutdown processes or between unit tests.
-* __waitForAvailability__: This method resolves once at least one slot is available for job execution. In other words, it resolves when the semaphore is available to trigger a new job immediately. Note that the same effect can be achieved with `startExecution` alone, if the async logic (intended to be delayed until availability) is handled within the job itself rather than as a preliminary step. Therefore, `waitForAvailability` serves as a design choice rather than a strict necessity.
+* __waitForAvailability__: This method resolves once at least one slot is available for job execution. In other words, it resolves when the semaphore is available to trigger a new job immediately. Note that the same effect can be achieved with `startExecution` alone, if the async logic (intended to be delayed until availability) is handled **within the job itself** rather than as a preliminary step. Therefore, `waitForAvailability` serves as a design choice rather than a strict necessity.
 * __extractUncaughtErrors__: Returns an array of uncaught errors, captured by the semaphore while executing background jobs added by `startExecution`. The instance will no longer hold these error references once extracted. In other words, ownership of these uncaught errors shifts to the caller, while the semaphore clears its list of uncaught errors.
 
 If needed, refer to the code documentation for a more comprehensive description of each method.
@@ -89,7 +89,9 @@ This semaphore variant excels in eliminating backpressure when dispatching multi
 Here, the start time of each job is crucial. Since a pending job cannot start its execution until the semaphore allows, there is no benefit to adding additional jobs that cannot start immediately. The `startExecution` method communicates the job's start time to the caller (resolves as soon as the job starts), which enables to create a new job as-soon-as it makes sense.
 
 For example, consider an application managing 1M IoT sensors that require hourly data aggregation. To mitigate server load, a semaphore can be employed to limit the number of concurrent data aggregation tasks.  
-Rather than pre-creating 1M jobs (one for each sensor), which could potentially overwhelm the Node.js task queue and induce backpressure, the system should adopt a **just-in-time** approach. This means creating a sensor aggregation job only when the semaphore indicates availability, thereby optimizing resource utilization and maintaining system stability.
+Instead of loading all sensor UIDs into memory and pre-creating 1M jobs (one for each sensor), which could potentially overwhelm the Node.js task queue and induce backpressure, the system should adopt a **just-in-time** approach. This means creating a sensor aggregation job only when the semaphore indicates availability, thereby optimizing resource utilization and maintaining system stability.
+
+The following example demonstrates fetching sensor UIDs using an `AsyncGenerator`. Async generators and iterators are widely adopted in modern APIs, providing efficient handling of potentially large data sets. For instance, the [AWS-SDK](https://aws.amazon.com/blogs/developer/pagination-using-async-iterators-in-modular-aws-sdk-for-javascript/) utilizes them for pagination, abstracting away complexities like managing offsets. Similarly, [MongoDB's cursor](https://www.mongodb.com/docs/manual/reference/method/db.collection.find/) enables iteration over a large number of documents in a paginated and asynchronous manner. These abstractions elegantly handle pagination internally, sparing users the complexities of managing offsets and other low-level details. By awaiting the semaphore's availability, the **space complexity** is implicitly constrained to *O(max(page-size, semaphore-capacity))*, as the `AsyncGenerator` fetches a new page only after all sensors from the current page have initiated aggregation.
 
 Note: method `waitForAllExecutingJobsToComplete` can be used to perform post-processing, after all jobs have completed. It complements the typical use-cases of `startExecution`.
 
@@ -101,8 +103,12 @@ const sensorAggregationSemaphore = new ZeroBackpressureSemaphore<void>(
   maxConcurrentAggregationJobs
 );
 
-async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
-  for (const uid of sensorUIDs) {
+async function aggregateSensorsData(sensorUIDs: AsyncGenerator<string>) {
+  let fetchedSensorsCounter = 0;
+
+  for await (const uid of sensorUIDs) {
+    ++fetchedSensorsCounter;
+
     // Until the semaphore can start aggregating data from the current sensor,
     // adding more jobs won't make sense as this would induce unnecessary backpressure.
     await sensorAggregationSemaphore.startExecution(
@@ -114,7 +120,7 @@ async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
 
   // Graceful termination: await the completion of all currently executing jobs.
   await sensorAggregationSemaphore.waitForAllExecutingJobsToComplete();
-  console.info(`Finished aggregating data from ${sensorUIDs.length} IoT sensors`);
+  console.info(`Finished aggregating data from ${fetchedSensorsCounter} IoT sensors`);
 }
 
 /**
@@ -128,7 +134,7 @@ async function handleDataAggregation(sensorUID): Promise<void> {
 }
 ```
 
-If the jobs might throw errors, you don't need to worry about these errors propagating up to the event loop and potentially crashing the application. Uncaught errors from jobs triggered by `startExecution` are captured by the semaphore and can be safely accessed for post-processing purposes (e.g., metrics).  
+If jobs might throw errors, you don't need to worry about these errors propagating to the event loop and potentially crashing the application. Uncaught errors from jobs triggered by `startExecution` are captured by the semaphore and can be safely accessed for post-processing purposes (e.g., metrics).  
 Refer to the following adaptation of the above example, now utilizing the semaphore's error handling capabilities:
 
 ```ts
@@ -141,8 +147,12 @@ const sensorAggregationSemaphore =
     maxConcurrentAggregationJobs
   );
 
-async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
-  for (const uid of sensorUIDs) {
+async function aggregateSensorsData(sensorUIDs: AsyncGenerator<string>) {
+  let fetchedSensorsCounter = 0;
+
+  for await (const uid of sensorUIDs) {
+    ++fetchedSensorsCounter;
+
     // Until the semaphore can start aggregating data from the current sensor,
     // adding more jobs won't make sense as this would induce unnecessary backpressure.
     await sensorAggregationSemaphore.startExecution(
@@ -162,7 +172,7 @@ async function aggregateSensorsData(sensorUIDs: ReadonlyArray<string>) {
   }
 
   // Summary.
-  const successfulJobsCount = sensorUIDs.length - errors.length;
+  const successfulJobsCount = fetchedSensorsCounter - errors.length;
   logger.info(
     `Successfully aggregated data from ${successfulJobsCount} IoT sensors, ` +
     `with failures in aggregating data from ${errors.length} IoT sensors`
@@ -181,105 +191,6 @@ async function handleDataAggregation(sensorUID): Promise<void> {
   // Implementation goes here. 
 }
 ```
-
-Please note that in a real-world scenario, sensor UIDs may be consumed from a message queue (e.g., RabbitMQ, Kafka, AWS SNS) rather than from an in-memory array. This setup **highlights the benefits** of avoiding backpressure:  
-Working with message queues typically involves acknowledgements, which have **timeout** mechanisms. Therefore, immediate processing is crucial to ensure efficient and reliable handling of messages. Backpressure on the semaphore means that messages experience longer delays before their corresponding jobs start execution.  
-Refer to the following adaptation of the previous example, where sensor UIDs are consumed from a message queue. This example overlooks error handling and message validation, for simplicity.
-
-```ts
-import { 
-  ZeroBackpressureSemaphore,
-  SemaphoreJob
-} from 'zero-backpressure-semaphore-typescript';
-
-const maxConcurrentAggregationJobs = 24;
-const sensorAggregationSemaphore =
-  new ZeroBackpressureSemaphore<void, SensorAggregationError>(
-    maxConcurrentAggregationJobs
-  );
-
-const SENSOR_UIDS_TOPIC = "IOT_SENSOR_UIDS";
-const mqClient = new MessageQueueClient(SENSOR_UIDS_TOPIC);
-
-async function processConsumedMessages(): Promise<void> {
-  let numberOfProcessedMessages = 0;
-  let isQueueEmpty = false;
-
-  const processOneMessage: SemaphoreJob<void> = async (): Promise<void> => {
-    if (isQueueEmpty) {
-      return;
-    }
-
-    const message = await mqClient.receiveOneMessage();
-    if (!message) {
-      // Consider the queue as empty, for simplicity of this example.
-      isQueueEmpty = true;
-      return;
-    }
-
-    ++numberOfProcessedMessages;
-    const { uid } = message.data;
-    await handleDataAggregation(uid);
-    await mqClient.removeMessageFromQueue(message);
-  };
-
-  do {
-    await sensorAggregationSemaphore.startExecution(processOneMessage);
-  } while (!isQueueEmpty);
-  // Note: at this stage, jobs might be still executing, as we did not wait for
-  // their completion.
-
-  // Graceful termination: await the completion of all currently executing jobs.
-  await sensorAggregationSemaphore.waitForAllExecutingJobsToComplete();
-
-  // Post processing.
-  const errors = sensorAggregationSemaphore.extractUncaughtErrors();
-  if (errors.length > 0) {
-    await updateFailedAggregationMetrics(errors);
-  }
-
-  // Summary.
-  const successfulJobsCount = numberOfProcessedMessages - errors.length;
-  logger.info(
-    `Successfully aggregated data from ${successfulJobsCount} IoT sensors, ` +
-    `with failures in aggregating data from ${errors.length} IoT sensors`
-  );
-}
-```
-
-Alternatively, the `waitForAvailability` method can address this need by checking availability as a preliminary action, **before** consuming a message.
-
-```ts
-async function processConsumedMessages(): Promise<void> {
-  let numberOfProcessedMessages = 0;
-
-  do {
-    await sensorAggregationSemaphore.waitForAvailability();
-    const message = await mqClient.receiveOneMessage();
-    if (!message) {
-      // Consider the queue as empty, for simplicity of this example.
-      break;
-    }
-
-    ++numberOfProcessedMessages;
-    const { uid } = message.data;
-
-    // At this point, `startExecution` will begin immediately, due to the
-    // preliminary `waitForAvailability` action.
-    await sensorAggregationSemaphore.startExecution(
-      (): Promise<void> => handleDataAggregation(uid);
-    );
-    
-    await mqClient.removeMessageFromQueue(message);
-  } while (true);
-}
-```
-
-In reference to the above example, please note that `waitForAvailability` may be considered overkill or redundant if the job's duration is significantly shorter than the message timeout.  
-For example, if the message queue's timeout for acknowledging a message is 1 minute and a typical job duration is 1 second, the 59 second gap provides a substantial safety margin. In such cases, the preliminary `waitForAvailability` action can be omitted.  
-On the other hand, given that the timeout is 30 seconds and a typical job duration is 20 seconds, using `waitForAvailability` is sensible. This is because `startExecution` might have to wait 20 seconds before the job can begin, resulting in a total of 40 seconds from the invocation of `startExecution` until the job completes.
-
-As a general rule, `waitForAvailability` is advisable whenever a timeout mechanism is involved, and the timeout period begins **before** the job starts execution. Note that the same effect can be achieved with `startExecution` alone, if the timeout-triggering logic is included in the job itself (such as, consuming a message). Both approaches are valid.
 
 ## 2nd use-case: Single Job Execution :man_technologist:<a id="second-use-case"></a>
 
