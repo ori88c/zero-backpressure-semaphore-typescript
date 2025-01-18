@@ -26,10 +26,13 @@ export type SemaphoreJob<T> = () => Promise<T>;
  *
  * ### Graceful Termination
  * All the job execution promises are tracked by the semaphore instance, ensuring no dangling promises.
- * This enables graceful termination via the `waitForAllExecutingJobsToComplete` method, which is
- * particularly useful for the multiple jobs execution use-case. This can help perform necessary
- * post-processing logic, and ensure a clear state between unit-tests.
- * If your component has a termination method (`stop`, `terminate`, or similar), keep that in mind.
+ * This enables graceful termination via the `waitForAllExecutingJobsToComplete` method, in scenarios
+ * where it is essential to ensure that all the currently executing or pending jobs are fully processed
+ * before proceeding.
+ * Examples include application shutdowns (e.g., `onModuleDestroy` in Nest.js applications) or
+ * maintaining a clear state between unit-tests.
+ * Should graceful teardown be a concern for your component, consider how its termination method (e.g.,
+ * `stop`, `terminate`, `onModuleDestroy`, etc) aligns with this capability.
  *
  * ### Error Handling for Background Jobs
  * Background jobs triggered by `startExecution` may throw errors. Unlike the `waitForCompletion` case,
@@ -38,13 +41,6 @@ export type SemaphoreJob<T> = () => Promise<T>;
  * the `extractUncaughtErrors` method. The number of accumulated uncaught errors can be obtained via
  * the `amountOfUncaughtErrors` getter method. This can be useful, for example, if the user wants to
  * handle uncaught errors only after a certain threshold is reached.
- *
- * ### Complexity
- * - **Initialization**: O(maxConcurrentJobs) for both time and space.
- * - **startExecution, waitForCompletion**: O(1) for both time and space, excluding the job execution itself.
- * - **waitForAllExecutingJobsToComplete**: O(maxConcurrentJobs) for both time and space, excluding job executions.
- * - All the getter methods have O(1) complexity for both time and space.
- *
  */
 export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     private readonly _availableSlotsStack;
@@ -52,6 +48,16 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     private _waitForAvailableSlot?;
     private _notifyAvailableSlotExists?;
     private _uncaughtErrors;
+    /**
+     * Constructor.
+     *
+     * Initializes the semaphore with the specified maximum number of concurrently
+     * executing jobs. This sets up the internal structures to enforce the concurrency
+     * limit for job execution.
+     *
+     * @param maxConcurrentJobs The maximum number of jobs that can execute concurrently.
+     * @throws Error if `maxConcurrentJobs` is not a natural number (i.e., a positive integer).
+     */
     constructor(maxConcurrentJobs: number);
     /**
      * maxConcurrentJobs
@@ -134,19 +140,34 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     /**
      * waitForAllExecutingJobsToComplete
      *
-     * This method allows the caller to wait until all *currently* executing jobs have finished,
-     * meaning once all running promises have either resolved or rejected.
+     * Waits for all **currently executing jobs** to finish, ensuring that all active promises
+     * have either resolved or rejected before proceeding. This enables graceful termination in
+     * scenarios such as:
+     * - Application shutdowns (e.g., `onModuleDestroy` in Nest.js applications).
+     * - Ensuring a clean state between unit tests.
      *
-     * This is particularly useful in scenarios where you need to ensure that all jobs are completed
-     * before proceeding, such as during shutdown processes or between unit tests.
+     * ### Considering Backpressure from Pending Jobs
+     * By default, this method only waits for jobs that are already **executing** at the time of
+     * invocation. In other words, the default behavior does **not** consider potential jobs that
+     * are still queued (pending execution).
+     * A backpressure of pending jobs may happen when multiple different callers share the same semaphore
+     * instance, each being unaware of the others.
+     * To extend the waiting behavior to include **potentially pending jobs** which account for backpressure,
+     * use the optional `considerPendingJobsBackpressure` parameter set to `true`. When this flag is enabled,
+     * the method will account for both existing and future backpressure, even if the backpressure arises
+     * after the method is invoked.
      *
-     * Note that the returned promise only awaits jobs that were executed at the time this method
-     * was called. Specifically, it awaits all jobs initiated by this instance that had not completed
-     * at the time of invocation.
-     *
-     * @returns A promise that resolves when all currently executing jobs are completed.
+     * @param considerPendingJobsBackpressure A boolean indicating whether this method should also wait for
+     *                                        the resolution of all potentially queued jobs (i.e., those not
+     *                                        yet executed when the method was invoked).
+     *                                        This is especially relevant when multiple different callers
+     *                                        share the same semaphore instance, each being unaware of the
+     *                                        others.
+     * @returns A promise that resolves once all currently executing jobs have completed.
+     *          If `considerPendingJobsBackpressure` is `true`, the promise will additionally
+     *          wait until all queued jobs have been executed, ensuring no pending job backpressure remains.
      */
-    waitForAllExecutingJobsToComplete(): Promise<void>;
+    waitForAllExecutingJobsToComplete(considerPendingJobsBackpressure?: boolean): Promise<void>;
     /**
      * waitForAvailability
      *

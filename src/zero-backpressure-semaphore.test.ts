@@ -16,6 +16,8 @@ const resolveFast = async () => {
   expect(14).toBeGreaterThan(3);
 };
 
+const delay = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
+
 describe('ZeroBackpressureSemaphore tests', () => {
   describe('Happy path tests', () => {
     test(
@@ -295,6 +297,66 @@ describe('ZeroBackpressureSemaphore tests', () => {
       expect(allJobsCompleted).toBe(true);
       expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
       expect(semaphore.amountOfUncaughtErrors).toBe(0);
+    });
+
+    test(
+      'waitForAllExecutingJobsToComplete with the considerPendingJobsBackpressure flag set should resolve ' +
+      'once all executing jobs and pending jobs (i.e., backpressure) have completed', async () => {
+      jest.useFakeTimers();
+      const maxConcurrentJobs = 24;
+      const considerPendingJobsBackpressure = true;
+      const fullConcurrencyCycles = 35;
+      const lastCycleConcurrency = 9;
+      const numberOfJobs = (fullConcurrencyCycles * maxConcurrentJobs) + lastCycleConcurrency;
+      const jobDurationMs = 4000;
+      const semaphore = new ZeroBackpressureSemaphore<void>(maxConcurrentJobs);
+      let completedJobsCounter = 0;
+      const job = async (): Promise<void> => {
+        await delay(jobDurationMs);
+        ++completedJobsCounter;
+      };
+
+      for (let ithJob = 0; ithJob < maxConcurrentJobs; ++ithJob) {
+        // We do not await here, but in practice, the caller should await the result before proceeding.
+        // The `waitForCompletion` method is typically used by multiple independent callers.
+        semaphore.waitForCompletion(job);
+      }
+
+      // We intentionally create the `waitForAllExecutingJobsToComplete` promise before adding pending jobs,
+      // which cannot be executed immediately. By using the `considerPendingJobsBackpressure` flag,
+      // the method will account for existing or future backpressure, even if it arises *after* the method
+      // is invoked.
+      let allJobsCompleted = false;
+      const allJobsCompletedPromise = (async () => {
+        await semaphore.waitForAllExecutingJobsToComplete(considerPendingJobsBackpressure);
+        allJobsCompleted = true;
+      })();
+
+      // Induce backpressure of pending jobs.
+      for (let ithJob = maxConcurrentJobs; ithJob < numberOfJobs; ++ithJob) {
+        semaphore.waitForCompletion(job);
+      }
+
+      for (let ithCycle = 1; ithCycle <= fullConcurrencyCycles; ++ithCycle) {
+        // Ensure that `waitForAllExecutingJobsToComplete` does not resolve prematurely.
+        expect(allJobsCompleted).toBe(false);
+
+        await Promise.race([
+          jest.advanceTimersByTimeAsync(jobDurationMs), // The race winner.
+          allJobsCompletedPromise
+        ]);
+        expect(completedJobsCounter).toBe(ithCycle * maxConcurrentJobs);
+      }
+
+      // The final cycle does not use the full concurrency capacity.
+      expect(allJobsCompleted).toBe(false);
+      await jest.advanceTimersByTimeAsync(jobDurationMs)
+      await allJobsCompletedPromise;
+      expect(allJobsCompleted).toBe(true);
+      expect(completedJobsCounter).toBe(numberOfJobs);
+
+      jest.restoreAllMocks();
+      jest.useRealTimers();
     });
 
     test('startExecution: background jobs should not exceed the max given concurrency', async () => {
