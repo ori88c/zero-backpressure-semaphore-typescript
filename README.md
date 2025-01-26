@@ -11,7 +11,9 @@ The design addresses the two primary semaphore use cases in Node.js:
 
 Each use case necessitates distinct handling capabilities, which will be discussed separately with accompanying examples.
 
-If your use case involves weighted jobs — where instead of limiting the maximum concurrency, you need to enforce a maximum total weight for concurrently executing jobs — consider using the weighted variant of this package: [zero-backpressure-weighted-promise-semaphore](https://www.npmjs.com/package/zero-backpressure-weighted-promise-semaphore).
+If your use case involves weighted jobs - where instead of limiting the maximum concurrency, you need to enforce a maximum total weight for concurrently executing jobs - consider using the weighted variant of this package: [zero-backpressure-weighted-promise-semaphore](https://www.npmjs.com/package/zero-backpressure-weighted-promise-semaphore).
+
+If your use case requires a concurrency of 1, consider using the lock variant of this package: [zero-overhead-promise-lock](https://www.npmjs.com/package/zero-overhead-promise-lock). While semaphores can simulate locks by setting their concurrency to 1, a dedicated lock implementation offers greater efficiency with minimal overhead.
 
 ## Table of Contents
 
