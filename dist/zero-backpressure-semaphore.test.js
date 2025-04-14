@@ -10,9 +10,10 @@ const zero_backpressure_semaphore_1 = require("./zero-backpressure-semaphore");
 const resolveFast = async () => {
     expect(14).toBeGreaterThan(3);
 };
-const delay = (ms) => new Promise(res => setTimeout(res, ms));
+const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 describe('ZeroBackpressureSemaphore tests', () => {
     describe('Happy path tests', () => {
+        // prettier-ignore
         test('waitForCompletion: should process only one job at a time, ' +
             'when jobs happen to be scheduled sequentially (trivial case)', async () => {
             const maxConcurrentJobs = 7;
@@ -23,7 +24,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 expect(semaphore.isAvailable).toBeTruthy();
                 expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
                 expect(semaphore.maxConcurrentJobs).toBe(maxConcurrentJobs);
-                const jobPromise = new Promise(res => completeCurrentJob = res);
+                const jobPromise = new Promise((res) => (completeCurrentJob = res));
                 const job = () => jobPromise;
                 const waitForCompletionPromise = semaphore.waitForCompletion(job);
                 await Promise.race([waitForCompletionPromise, resolveFast()]);
@@ -35,6 +36,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
         });
+        // prettier-ignore
         test('waitForCompletion: should process only one job at a time, ' +
             'when max concurrency is 1 and jobs are scheduled concurrently', async () => {
             const maxConcurrentJobs = 1;
@@ -44,15 +46,16 @@ describe('ZeroBackpressureSemaphore tests', () => {
             const waitForCompletionPromises = [];
             // Create a burst of jobs, inducing backpressure on the semaphore.
             for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
-                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
+                const jobPromise = new Promise((res) => (jobCompletionCallbacks[ithJob] = res));
                 const job = () => jobPromise;
                 // Jobs will be executed in the order in which they were registered.
                 waitForCompletionPromises.push(lock.waitForCompletion(job));
-                // Trigger the event loop to allow the semaphore to evaluate if the current job can begin execution.
+                // Trigger the event loop to allow the semaphore to evaluate if the current job
+                // can begin execution.
                 // Based on this test's configuration, only the first job will be allowed to start.
                 await Promise.race([
                     waitForCompletionPromises[waitForCompletionPromises.length - 1],
-                    resolveFast()
+                    resolveFast(),
                 ]);
             }
             for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
@@ -74,6 +77,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             expect(lock.maxConcurrentJobs).toBe(maxConcurrentJobs);
             expect(lock.amountOfUncaughtErrors).toBe(0);
         });
+        // prettier-ignore
         test('waitForCompletion: should not exceed max concurrently executing jobs, ' +
             'when the amont of pending jobs is bigger than the amount of slots', async () => {
             const maxConcurrentJobs = 5;
@@ -83,7 +87,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
             // Create a burst of jobs, inducing backpressure on the semaphore.
             for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
-                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
+                const jobPromise = new Promise((res) => (jobCompletionCallbacks[ithJob] = res));
                 const job = () => jobPromise;
                 // Jobs will be executed in the order in which they were registered.
                 waitForCompletionPromises.push(semaphore.waitForCompletion(job));
@@ -92,11 +96,12 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 // `maxConcurrentJobs` jobs will be allowed to start.
                 await Promise.race([
                     waitForCompletionPromises[waitForCompletionPromises.length - 1],
-                    resolveFast()
+                    resolveFast(),
                 ]);
             }
             for (let ithJob = 0; ithJob < numberOfJobs; ++ithJob) {
-                // At this stage, jobs [ithJob, min(maxConcurrentJobs, ithJob + maxConcurrentJobs - 1)] are executing.
+                // At this stage, jobs [ithJob, min(maxConcurrentJobs, ithJob + maxConcurrentJobs - 1)]
+                // are executing.
                 const remainedJobs = numberOfJobs - ithJob;
                 const isAvailable = remainedJobs < maxConcurrentJobs;
                 const amountOfCurrentlyExecutingJobs = isAvailable ? remainedJobs : maxConcurrentJobs;
@@ -142,6 +147,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             // `startExecution`.
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
         });
+        // prettier-ignore
         test('waitForAllExecutingJobsToComplete should resolve once all executing jobs have completed: ' +
             'Jobs are resolved in FIFO order in this test', async () => {
             const maxConcurrentJobs = 56;
@@ -149,14 +155,14 @@ describe('ZeroBackpressureSemaphore tests', () => {
             const waitForCompletionPromises = [];
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
             for (let ithJob = 0; ithJob < maxConcurrentJobs; ++ithJob) {
-                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
+                const jobPromise = new Promise((res) => (jobCompletionCallbacks[ithJob] = res));
                 const job = () => jobPromise;
                 // Jobs will be executed in the order in which they were registered.
                 waitForCompletionPromises.push(semaphore.waitForCompletion(job));
                 // Trigger the event loop.
                 await Promise.race([
                     waitForCompletionPromises[waitForCompletionPromises.length - 1],
-                    resolveFast()
+                    resolveFast(),
                 ]);
             }
             // At this point, the semaphore should be fully utilized.
@@ -177,7 +183,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 jobCompletionCallbacks[ithJob]();
                 await Promise.race([
                     waitForAllExecutingJobsToCompletePromise,
-                    waitForCompletionPromises[ithJob] // Always wins the race, except potentially in the last iteration.
+                    waitForCompletionPromises[ithJob], // Always wins the race, except potentially in the last iteration.
                 ]);
                 // After resolving.
                 expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(maxConcurrentJobs - ithJob - 1);
@@ -188,24 +194,26 @@ describe('ZeroBackpressureSemaphore tests', () => {
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
         });
+        // prettier-ignore
         test('waitForAllExecutingJobsToComplete should resolve once all executing jobs have completed: ' +
             'Jobs are resolved in FILO order in this test', async () => {
-            // FILO order for job completion times is less likely in real life, but it’s a good edge case to test.
-            // It ensures the semaphore can maintain a reference to an old job, even if its execution time exceeds
-            // all others.
+            // FILO order for job completion times is less likely in real life, but it’s a good
+            // edge case to test.
+            // It ensures the semaphore can maintain a reference to an old job, even if its execution
+            // time exceeds all others.
             const maxConcurrentJobs = 47;
             const jobCompletionCallbacks = [];
             const waitForCompletionPromises = [];
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
             for (let ithJob = 0; ithJob < maxConcurrentJobs; ++ithJob) {
-                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
+                const jobPromise = new Promise((res) => (jobCompletionCallbacks[ithJob] = res));
                 const job = () => jobPromise;
                 // Jobs will be executed in the order in which they were registered.
                 waitForCompletionPromises.push(semaphore.waitForCompletion(job));
                 // Trigger the event loop.
                 await Promise.race([
                     waitForCompletionPromises[waitForCompletionPromises.length - 1],
-                    resolveFast()
+                    resolveFast(),
                 ]);
             }
             // At this point, the semaphore should be fully utilized.
@@ -227,7 +235,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 jobCompletionCallbacks.pop()();
                 await Promise.race([
                     waitForAllExecutingJobsToCompletePromise,
-                    waitForCompletionPromises.pop() // Always wins the race, except potentially in the last iteration.
+                    waitForCompletionPromises.pop(), // Always wins the race, except potentially in the last iteration.
                 ]);
                 --expectedAmountOfCurrentlyExecutingJobs;
                 // After resolving.
@@ -239,14 +247,15 @@ describe('ZeroBackpressureSemaphore tests', () => {
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
             expect(semaphore.amountOfUncaughtErrors).toBe(0);
         });
-        test('waitForAllExecutingJobsToComplete with the considerPendingJobsBackpressure flag set should resolve ' +
-            'once all executing jobs and pending jobs (i.e., backpressure) have completed', async () => {
+        // prettier-ignore
+        test('waitForAllExecutingJobsToComplete with the considerPendingJobsBackpressure flag set should ' +
+            'resolve once all executing jobs and pending jobs (i.e., backpressure) have completed', async () => {
             jest.useFakeTimers();
             const maxConcurrentJobs = 24;
             const considerPendingJobsBackpressure = true;
             const fullConcurrencyCycles = 35;
             const lastCycleConcurrency = 9;
-            const numberOfJobs = (fullConcurrencyCycles * maxConcurrentJobs) + lastCycleConcurrency;
+            const numberOfJobs = fullConcurrencyCycles * maxConcurrentJobs + lastCycleConcurrency;
             const jobDurationMs = 4000;
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
             let completedJobsCounter = 0;
@@ -255,14 +264,15 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 ++completedJobsCounter;
             };
             for (let ithJob = 0; ithJob < maxConcurrentJobs; ++ithJob) {
-                // We do not await here, but in practice, the caller should await the result before proceeding.
-                // The `waitForCompletion` method is typically used by multiple independent callers.
+                // We do not await here, but in practice, the caller should await the result before
+                // proceeding. The `waitForCompletion` method is typically used by multiple independent
+                // callers.
                 semaphore.waitForCompletion(job);
             }
-            // We intentionally create the `waitForAllExecutingJobsToComplete` promise before adding pending jobs,
-            // which cannot be executed immediately. By using the `considerPendingJobsBackpressure` flag,
-            // the method will account for existing or future backpressure, even if it arises *after* the method
-            // is invoked.
+            // We intentionally create the `waitForAllExecutingJobsToComplete` promise before adding
+            // pending jobs, which cannot be executed immediately. By using the `considerPendingJobsBackpressure`
+            // flag, the method will account for existing or future backpressure, even if it arises *after*
+            // the method is invoked.
             let allJobsCompleted = false;
             const allJobsCompletedPromise = (async () => {
                 await semaphore.waitForAllExecutingJobsToComplete(considerPendingJobsBackpressure);
@@ -277,7 +287,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 expect(allJobsCompleted).toBe(false);
                 await Promise.race([
                     jest.advanceTimersByTimeAsync(jobDurationMs), // The race winner.
-                    allJobsCompletedPromise
+                    allJobsCompletedPromise,
                 ]);
                 expect(completedJobsCounter).toBe(ithCycle * maxConcurrentJobs);
             }
@@ -306,9 +316,12 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 if (!shouldJobSucceed) {
                     ++numberOfFailedJobs;
                 }
-                const jobPromise = new Promise((res, rej) => jobCompletionCallbacks[ithJob] = shouldJobSucceed ?
-                    () => res() :
-                    () => rej(new Error('Why bad things happen to good semaphores?')));
+                // prettier-ignore
+                const jobPromise = new Promise((res, rej) => {
+                    jobCompletionCallbacks[ithJob] = shouldJobSucceed
+                        ? () => res()
+                        : () => rej(new Error('Why bad things happen to good semaphores?'));
+                });
                 const job = () => jobPromise;
                 // Jobs will be executed in the order in which they were registered.
                 const waitUntilExecutionStartsPromise = semaphore.startExecution(job);
@@ -358,7 +371,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             const semaphore = new zero_backpressure_semaphore_1.ZeroBackpressureSemaphore(maxConcurrentJobs);
             for (let ithJob = 0; ithJob < maxConcurrentJobs; ++ithJob) {
                 expect(semaphore.isAvailable).toBe(true);
-                const jobPromise = new Promise(res => jobCompletionCallbacks[ithJob] = res);
+                const jobPromise = new Promise((res) => (jobCompletionCallbacks[ithJob] = res));
                 await semaphore.startExecution(() => jobPromise); // Should resolve immediately.
             }
             expect(semaphore.isAvailable).toBe(false);
@@ -392,7 +405,9 @@ describe('ZeroBackpressureSemaphore tests', () => {
             await semaphore.waitForAllExecutingJobsToComplete();
             expect(semaphore.amountOfCurrentlyExecutingJobs).toBe(0);
         });
-        test('when _waitForAvailableSlot resolves, its awaiters should be executed according to their order in the microtasks queue', async () => {
+        // prettier-ignore
+        test('when _waitForAvailableSlot resolves, its awaiters should be executed according to ' +
+            'their order in the microtasks queue', async () => {
             // This test does not directly assess the semaphore component. Instead, it verifies the
             // correctness of the slot-acquire mechanism, ensuring it honors the FIFO order of callers
             // requesting an available slot.
@@ -417,7 +432,7 @@ describe('ZeroBackpressureSemaphore tests', () => {
             // This specific usage of one promise instance being awaited by multiple other promises
             // may remind those with a C++ background of a condition_variable.
             let notifyAvailableSlotExists;
-            const waitForAvailableSlot = new Promise(res => notifyAvailableSlotExists = res);
+            const waitForAvailableSlot = new Promise((res) => (notifyAvailableSlotExists = res));
             const awaiterAskingForSlot = async (awaiterID) => {
                 await waitForAvailableSlot;
                 actualExecutionOrderOfAwaiters.push(awaiterID);
@@ -438,7 +453,6 @@ describe('ZeroBackpressureSemaphore tests', () => {
             await Promise.all(awaiterPromises);
             // The execution order should match the expected order.
             expect(actualExecutionOrderOfAwaiters).toEqual(expectedExecutionOrder);
-            ;
         });
     });
     describe('Negative path tests', () => {
@@ -460,10 +474,12 @@ describe('ZeroBackpressureSemaphore tests', () => {
                 const error = {
                     name: 'CustomJobError',
                     message: `Job no. ${ithJob} has failed`,
-                    jobID: ithJob
+                    jobID: ithJob,
                 };
                 jobErrors.push(error);
-                await semaphore.startExecution(async () => { throw error; });
+                await semaphore.startExecution(async () => {
+                    throw error;
+                });
             }
             await semaphore.waitForAllExecutingJobsToComplete();
             expect(semaphore.amountOfUncaughtErrors).toBe(numberOfJobs);

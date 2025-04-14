@@ -1,7 +1,5 @@
 export type SemaphoreJob<T> = () => Promise<T>;
 /**
- * ZeroBackpressureSemaphore
- *
  * The `ZeroBackpressureSemaphore` class implements a semaphore for Node.js projects, allowing users
  * to limit the number of concurrently executing jobs. This implementation does not queue pending
  * jobs, thereby eliminating backpressure. As a result, users have better control over memory
@@ -24,7 +22,7 @@ export type SemaphoreJob<T> = () => Promise<T>;
  * methods, reminiscent of the RAII idiom in C++.
  * Method names are chosen to clearly convey their functionality.
  *
- * ### Graceful Termination
+ * ### Graceful Teardown
  * All the job execution promises are tracked by the semaphore instance, ensuring no dangling promises.
  * This enables graceful termination via the `waitForAllExecutingJobsToComplete` method, in scenarios
  * where it is essential to ensure that all the currently executing or pending jobs are fully processed
@@ -49,8 +47,6 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     private _notifyAvailableSlotExists?;
     private _uncaughtErrors;
     /**
-     * Constructor.
-     *
      * Initializes the semaphore with the specified maximum number of concurrently
      * executing jobs. This sets up the internal structures to enforce the concurrency
      * limit for job execution.
@@ -60,26 +56,18 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      */
     constructor(maxConcurrentJobs: number);
     /**
-     * maxConcurrentJobs
-     *
      * @returns The maximum number of concurrent jobs as specified in the constructor.
      */
     get maxConcurrentJobs(): number;
     /**
-     * isAvailable
-     *
      * @returns True if there is an available job slot, otherwise false.
      */
     get isAvailable(): boolean;
     /**
-     * amountOfCurrentlyExecutingJobs
-     *
      * @returns The number of jobs currently being executed by the semaphore.
      */
     get amountOfCurrentlyExecutingJobs(): number;
     /**
-     * amountOfUncaughtErrors
-     *
      * Indicates the number of uncaught errors from background jobs triggered by `startExecution`,
      * that are currently stored by the instance.
      * These errors have not yet been extracted using `extractUncaughtErrors`.
@@ -91,10 +79,8 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      */
     get amountOfUncaughtErrors(): number;
     /**
-     * startExecution
-     *
-     * This method resolves once the given job has *started* its execution, indicating that the
-     * semaphore has become available (i.e., allotted a slot for the job).
+     * Resolves once the given job has *started* its execution, indicating that the semaphore has
+     * become available (i.e., allotted a slot for the job).
      * Users can leverage this to prevent backpressure of pending jobs:
      * If the semaphore is too busy to start a given job `X`, there is no reason to create another
      * job `Y` until `X` has started.
@@ -103,7 +89,7 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * value is expected. It promotes a just-in-time approach, on which each job is pending execution
      * only when no other job is, thereby eliminating backpressure and reducing memory footprint.
      *
-     * ### Graceful Termination
+     * ### Graceful Teardown
      * Method `waitForAllExecutingJobsToComplete` complements the typical use-cases of `startExecution`.
      * It can be used to perform post-processing, after all the currently-executing jobs have completed.
      *
@@ -112,19 +98,17 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * `extractUncaughtError` method. Users are encouraged to specify a custom `UncaughtErrorType`
      * generic parameter to the class if jobs may throw errors.
      *
-     * @param backgroundJob - The job to be executed once the semaphore is available.
+     * @param backgroundJob The job to be executed once the semaphore is available.
      * @returns A promise that resolves when the job starts execution.
      */
     startExecution(backgroundJob: SemaphoreJob<T>): Promise<void>;
     /**
-     * waitForCompletion
+     * Executes the given job in a controlled manner, once the semaphore is available.
+     * It resolves or rejects when the job finishes execution, returning the job's value or
+     * propagating any error it may throw.
      *
-     * This method executes the given job in a controlled manner, once the semaphore is available.
-     * It resolves or rejects when the job finishes execution, returning the job's value or propagating
-     * any error it may throw.
-     *
-     * This method is useful when the flow depends on a job's execution to proceed, such as needing
-     * its return value or handling any errors it may throw.
+     * This method is useful when the flow depends on a job's execution to proceed, such as
+     * needing its return value or handling any errors it may throw.
      *
      * ### Example Use Case
      * Suppose you have a route handler that needs to perform a specific code block with limited
@@ -132,14 +116,12 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * This method allows you to execute the job with controlled concurrency. Once the job resolves
      * or rejects, you can continue the route handler's flow based on the result.
      *
-     * @param job - The job to be executed once the semaphore is available.
-     * @throws - Error thrown by the job itself.
+     * @param job The job to be executed once the semaphore is available.
+     * @throws Error thrown by the job itself.
      * @returns A promise that resolves with the job's return value or rejects with its error.
      */
     waitForCompletion(job: SemaphoreJob<T>): Promise<T>;
     /**
-     * waitForAllExecutingJobsToComplete
-     *
      * Waits for all **currently executing jobs** to finish, ensuring that all active promises
      * have either resolved or rejected before proceeding. This enables graceful termination in
      * scenarios such as:
@@ -150,27 +132,25 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * By default, this method only waits for jobs that are already **executing** at the time of
      * invocation. In other words, the default behavior does **not** consider potential jobs that
      * are still queued (pending execution).
-     * A backpressure of pending jobs may happen when multiple different callers share the same semaphore
-     * instance, each being unaware of the others.
-     * To extend the waiting behavior to include **potentially pending jobs** which account for backpressure,
-     * use the optional `considerPendingJobsBackpressure` parameter set to `true`. When this flag is enabled,
-     * the method will account for both existing and future backpressure, even if the backpressure arises
-     * after the method is invoked.
+     * A backpressure of pending jobs may happen when multiple different callers share the same
+     * semaphore instance, each being unaware of the others.
+     * To extend the waiting behavior to include **potentially pending jobs** which account for
+     * backpressure, use the optional `considerPendingJobsBackpressure` parameter set to `true`.
+     * When this flag is enabled, the method will account for both existing and future backpressure,
+     * even if the backpressure arises after the method is invoked.
      *
-     * @param considerPendingJobsBackpressure A boolean indicating whether this method should also wait for
-     *                                        the resolution of all potentially queued jobs (i.e., those not
-     *                                        yet executed when the method was invoked).
+     * @param considerPendingJobsBackpressure A boolean indicating whether this method should also wait
+     *                                        for the resolution of all potentially queued jobs (i.e.,
+     *                                        those not yet executed when the method was invoked).
      *                                        This is especially relevant when multiple different callers
-     *                                        share the same semaphore instance, each being unaware of the
-     *                                        others.
+     *                                        share the same semaphore instance, each being unaware of
+     *                                        the others.
      * @returns A promise that resolves once all currently executing jobs have completed.
      *          If `considerPendingJobsBackpressure` is `true`, the promise will additionally
      *          wait until all queued jobs have been executed, ensuring no pending job backpressure remains.
      */
     waitForAllExecutingJobsToComplete(considerPendingJobsBackpressure?: boolean): Promise<void>;
     /**
-     * waitForAvailability
-     *
      * This method resolves once at least one slot is available for job execution.
      * In other words, it resolves when the semaphore is available to trigger a new job immediately.
      *
@@ -185,19 +165,19 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * To prevent such potential backpressure, users can utilize the `waitForAvailability` method
      * before consuming the next message.
      *
-     * ### Rarely Needed
-     * This method can be useful when the system is experiencing high load (as indicated by CPU and/or memory
-     * usage metrics), and you want to pause further async operations until an available job slot opens up.
+     * ### Design Choice
+     * This method can be useful when the system is experiencing high load (as indicated by CPU
+     * and/or memory usage metrics), and you want to pause further async operations until an available
+     * job slot opens up.
      * However, the same effect can be achieved with `startExecution` alone if the async logic
-     * (intended to be delayed until availability) is handled within the job itself rather than as a preliminary
-     * step. Therefore, `waitForAvailability` serves as a design choice rather than a strict necessity.
+     * (intended to be delayed until availability) is handled within the job itself rather than as
+     * a preliminary step. Therefore, `waitForAvailability` serves as a design choice rather than a
+     * strict necessity.
      *
      * @returns A promise that resolves once at least one slot is available.
      */
     waitForAvailability(): Promise<void>;
     /**
-     * extractUncaughtErrors
-     *
      * This method returns an array of uncaught errors, captured by the semaphore while executing
      * background jobs added by `startExecution`. The term `extract` implies that the semaphore
      * instance will no longer hold these error references once extracted, unlike `get`. In other
@@ -217,8 +197,6 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
     extractUncaughtErrors(): UncaughtErrorType[];
     private _getAvailableSlot;
     /**
-     * _handleJobExecution
-     *
      * This method manages the execution of a given job in a controlled manner. It ensures that
      * the job is executed within the constraints of the semaphore and handles updating the
      * internal state once the job has completed.
@@ -227,11 +205,11 @@ export declare class ZeroBackpressureSemaphore<T, UncaughtErrorType = Error> {
      * - Waits for the job to either return a value or throw an error.
      * - Updates the internal state to make the allotted slot available again once the job is finished.
      *
-     * @param job - The job to be executed in the given slot.
-     * @param allottedSlot - The slot number in which the job should be executed.
-     * @param isBackgroundJob - A flag indicating whether the caller expects a return value to proceed
-     *                          with its work. If `true`, no return value is expected, and any error
-     *                          thrown by the job should not be propagated.
+     * @param job The job to be executed in the given slot.
+     * @param allottedSlot The slot number in which the job should be executed.
+     * @param isBackgroundJob A flag indicating whether the caller expects a return value to proceed
+     *                        with its work. If `true`, no return value is expected, and any error
+     *                        thrown by the job should not be propagated.
      * @returns A promise that resolves with the job's return value or rejects with its error.
      *          Rejection occurs only if triggered by `waitForCompletion`.
      */

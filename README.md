@@ -34,8 +34,8 @@ If your use case requires a concurrency of 1, consider using the lock variant of
 
 ## Key Features :sparkles:<a id="key-features"></a>
 
-- __Backpressure Control__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked. Without backpressure control, the heap can become overloaded, resulting in space complexity of O(*semaphore-slots* + *pending-jobs*) instead of O(*semaphore-slots*).
-- __Graceful Termination__: Await the completion of all currently executing jobs via the `waitForAllExecutingJobsToComplete` method.
+- __Backpressure Control :vertical_traffic_light:__: Ideal for job workers and background services. Concurrency control alone isn't sufficient to ensure stability and performance if backpressure control is overlooked. Without backpressure control, the heap can become overloaded, resulting in space complexity of O(*semaphore-slots* + *pending-jobs*) instead of O(*semaphore-slots*).
+- __Graceful & Deterministic Teardown :hourglass_flowing_sand:__: Await the completion of all currently executing jobs via the `waitForAllExecutingJobsToComplete` method. This guarantees **smooth resource cleanup**, making it well-suited for production environments (e.g., `onModuleDestroy` in NestJS) and maintaining a clean state between unit tests.
 - __High Efficiency :gear:__: All state-altering operations have a constant time complexity, O(1).
 - __Comprehensive documentation :books:__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
 - __Robust Error Handling__: Uncaught errors from background jobs triggered by `startExecution` are captured and can be accessed using the `extractUncaughtErrors` method.
