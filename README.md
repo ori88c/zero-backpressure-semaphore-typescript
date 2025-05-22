@@ -38,7 +38,7 @@ If your use case requires a concurrency of 1, consider using the lock variant of
 - __Graceful & Deterministic Teardown :hourglass_flowing_sand:__: Await the completion of all currently executing jobs via the `waitForAllExecutingJobsToComplete` method. This guarantees **smooth resource cleanup**, making it well-suited for production environments (e.g., `onModuleDestroy` in NestJS) and maintaining a clean state between unit tests.
 - __High Efficiency :gear:__: All state-altering operations have a constant time complexity, O(1).
 - __Comprehensive documentation :books:__: The class is thoroughly documented, enabling IDEs to provide helpful tooltips that enhance the coding experience.
-- __Robust Error Handling__: Uncaught errors from background jobs triggered by `startExecution` are captured and can be accessed using the `extractUncaughtErrors` method.
+- __Robust Error Handling :warning:__: Uncaught errors from background jobs triggered by `startExecution` are captured and can be accessed using the `extractUncaughtErrors` method.
 - __Metrics :bar_chart:__: The class offers various metrics through getter methods, such as `amountOfCurrentlyExecutingJobs`, providing insights into the semaphore's current state. These metrics can be used for periodic logging or to collect statistics from real-world usage.
 - __Tests :test_tube:__: Fully covered by rigorous unit tests.
 - Self-explanatory method names.
@@ -100,29 +100,29 @@ Note: method `waitForAllExecutingJobsToComplete` can be used to perform post-pro
 ```ts
 import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
 
-const maxConcurrentAggregationJobs = 24;
-const sensorAggregationSemaphore = new ZeroBackpressureSemaphore<void>(
-  maxConcurrentAggregationJobs
-);
+const MAX_CONCURRENT_AGGREGATIONS_PER_CUSTOMER = 24;
 
-async function aggregateSensorsData(sensorUIDs: AsyncGenerator<string>) {
-  let fetchedSensorsCounter = 0;
+async function aggregateCustomerSensorsData(sensorUIDs: AsyncGenerator<string>) {
+  const aggregationSemaphore = new ZeroBackpressureSemaphore<void>(
+    MAX_CONCURRENT_AGGREGATIONS_PER_CUSTOMER
+  );
+  let sensorCount = 0;
 
   for await (const uid of sensorUIDs) {
-    ++fetchedSensorsCounter;
+    ++sensorCount;
 
     // Until the semaphore can start aggregating data from the current sensor,
     // adding more jobs won't make sense as this would induce unnecessary backpressure.
-    await sensorAggregationSemaphore.startExecution(
+    await aggregationSemaphore.startExecution(
       (): Promise<void> => handleDataAggregation(uid)
     );
   }
-  // Note: at this stage, jobs might be still executing, as we did not wait for
-  // their completion.
+  // Note: at this stage, jobs might be still executing, as we did not wait
+  // for their completion.
 
   // Graceful termination: await the completion of all currently executing jobs.
-  await sensorAggregationSemaphore.waitForAllExecutingJobsToComplete();
-  console.info(`Finished aggregating data from ${fetchedSensorsCounter} IoT sensors`);
+  await aggregationSemaphore.waitForAllExecutingJobsToComplete();
+  console.info(`Finished aggregating data from ${sensorCount} IoT sensors`);
 }
 
 /**
@@ -136,28 +136,66 @@ async function handleDataAggregation(sensorUID): Promise<void> {
 }
 ```
 
+The `waitForAvailability` method is ideal for scenarios where you prefer a `while` loop structure or need to defer fetching the next job's metadata **until** the semaphore confirms that at least one execution slot is available.  
+This pattern is especially useful when you want to minimize the **delay between acquiring job metadata and dispatching its execution**, ensuring timely and efficient job handling.  
+Below is a tailored example illustrating this approach:
+```ts
+import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
+
+const MAX_CONCURRENT_AGGREGATIONS_PER_CUSTOMER = 24;
+
+async function aggregateCustomerSensorsData(sensorUIDs: AsyncGenerator<string>) {
+  const aggregationSemaphore = new ZeroBackpressureSemaphore<void>(
+    MAX_CONCURRENT_AGGREGATIONS_PER_CUSTOMER
+  );
+  let sensorCount = 0;
+
+  do {
+    // Ensure a slot is available before fetching the next UID.
+    await aggregationSemaphore.waitForAvailability();
+
+    const { done, value: uid } = await sensorUIDs.next();
+    if (done) break;
+
+    ++sensorCount;
+
+    // Since availability was confirmed beforehand, the job will
+    // start execution immediately.
+    await aggregationSemaphore.startExecution(
+      () => handleDataAggregation(uid)
+    );
+  } while (true);
+  // Note: at this stage, jobs might be still executing, as we did not wait
+  // for their completion.
+
+  // Final step: wait for all in-flight jobs to complete.
+  await aggregationSemaphore.waitForAllExecutingJobsToComplete();
+  console.info(`Finished aggregating data from ${sensorCount} IoT sensors`);
+}
+```
+
 If jobs might throw errors, you don't need to worry about these errors propagating to the event loop and potentially crashing the application. Uncaught errors from jobs triggered by `startExecution` are captured by the semaphore and can be safely accessed for post-processing purposes (e.g., metrics).  
 Refer to the following adaptation of the above example, now utilizing the semaphore's error handling capabilities:
 
 ```ts
 import { ZeroBackpressureSemaphore } from 'zero-backpressure-semaphore-typescript';
 
-const maxConcurrentAggregationJobs = 24;
-const sensorAggregationSemaphore =
-  // Notice the 2nd generic parameter (Error by default).
-  new ZeroBackpressureSemaphore<void, SensorAggregationError>(
-    maxConcurrentAggregationJobs
-  );
+const MAX_CONCURRENT_AGGREGATIONS_PER_CUSTOMER = 24;
 
 async function aggregateSensorsData(sensorUIDs: AsyncGenerator<string>) {
-  let fetchedSensorsCounter = 0;
+  const aggregationSemaphore =
+    // Notice the 2nd generic parameter (Error by default).
+    new ZeroBackpressureSemaphore<void, SensorAggregationError>(
+      MAX_CONCURRENT_AGGREGATIONS_PER_CUSTOMER
+    );
+  let sensorCount = 0;
 
   for await (const uid of sensorUIDs) {
-    ++fetchedSensorsCounter;
+    ++sensorCount;
 
     // Until the semaphore can start aggregating data from the current sensor,
     // adding more jobs won't make sense as this would induce unnecessary backpressure.
-    await sensorAggregationSemaphore.startExecution(
+    await aggregationSemaphore.startExecution(
       (): Promise<void> => handleDataAggregation(uid)
     );
   }
@@ -165,17 +203,17 @@ async function aggregateSensorsData(sensorUIDs: AsyncGenerator<string>) {
   // their completion.
 
   // Graceful termination: await the completion of all currently executing jobs.
-  await sensorAggregationSemaphore.waitForAllExecutingJobsToComplete();
+  await aggregationSemaphore.waitForAllExecutingJobsToComplete();
 
   // Post processing.
-  const errors = sensorAggregationSemaphore.extractUncaughtErrors();
+  const errors = aggregationSemaphore.extractUncaughtErrors();
   if (errors.length > 0) {
     await updateFailedAggregationMetrics(errors);
   }
 
   // Summary.
-  const successfulJobsCount = fetchedSensorsCounter - errors.length;
-  logger.info(
+  const successfulJobsCount = sensorCount - errors.length;
+  console.info(
     `Successfully aggregated data from ${successfulJobsCount} IoT sensors, ` +
     `with failures in aggregating data from ${errors.length} IoT sensors`
   );
@@ -208,11 +246,13 @@ import { SemaphoreJob, ZeroBackpressureSemaphore } from 'zero-backpressure-semap
 type UserInfo = Record<string, string>;
 
 const maxConcurrentDbRequests = 32;
-const dbAccessSemaphore = new ZeroBackpressureSemaphore<UserInfo>(maxConcurrentDbRequests);
+const dbAccessSemaphore = new ZeroBackpressureSemaphore<UserInfo>(
+  maxConcurrentDbRequests
+);
 
 app.get('/user/', async (req, res) => {
   // Define the sub-prodecure.
-  const fetchUserInfo: SemaphoreJob<UserInfo> = async (): Promise<UserInfo> => {
+  const fetchUserInfo = async (): Promise<UserInfo> => {
     const userInfo: UserInfo = await usersDbClient.get(req.userID);
     return userInfo;
   }

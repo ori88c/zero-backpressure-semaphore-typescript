@@ -1,6 +1,6 @@
 {
   "name": "zero-backpressure-semaphore-typescript",
-  "version": "3.1.2",
+  "version": "3.1.3",
   "description": "A modern Promise-semaphore for Node.js projects, enabling users to limit the number of concurrently executing promises. Offering backpressure control for enhanced efficiency, utilizing a communicative API that signals availability, promoting a just-in-time approach. Additionally, it incorporates mechanisms for graceful termination and error handling, making it suitable for complex scenarios.",
   "repository": {
     "type": "git",
@@ -37,14 +37,17 @@
     "graceful-termination",
     "graceful-teardown",
     "graceful-shutdown",
-    "scheduler",
-    "executor",
+    "wait-for-availability",
+    "notify-availability",
+    "free-slot",
+    "execution-slot",
+    "wait-for-completion",
+    "wait-in-flight",
     "error-handling",
     "uncaught-error",
     "uncaught-rejection",
     "async",
     "nodejs",
-    "Node.js",
     "typescript",
     "ts",
     "ES2020"
